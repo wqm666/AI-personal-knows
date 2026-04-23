@@ -1,0 +1,502 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Personal Know - 个人知识库</title>
+<style>
+:root {
+  --bg: #f5f5f5; --card: #fff; --primary: #4f46e5; --primary-light: #e0e7ff;
+  --text: #1f2937; --text-secondary: #6b7280; --border: #e5e7eb;
+  --success: #10b981; --warning: #f59e0b; --danger: #ef4444;
+  --radius: 8px; --shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: var(--bg); color: var(--text); }
+
+.app { display: flex; min-height: 100vh; }
+.sidebar { width: 220px; background: var(--card); border-right: 1px solid var(--border); padding: 20px 0; position: fixed; height: 100vh; }
+.sidebar h1 { font-size: 18px; padding: 0 20px 20px; border-bottom: 1px solid var(--border); }
+.sidebar h1 span { color: var(--primary); }
+.nav-item { display: block; padding: 12px 20px; cursor: pointer; color: var(--text-secondary); text-decoration: none; transition: all .2s; }
+.nav-item:hover, .nav-item.active { background: var(--primary-light); color: var(--primary); }
+.main { margin-left: 220px; flex: 1; padding: 24px; max-width: 1200px; }
+
+.card { background: var(--card); border-radius: var(--radius); box-shadow: var(--shadow); padding: 20px; margin-bottom: 16px; }
+.card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+.card-header h2 { font-size: 18px; }
+
+input, textarea, select { border: 1px solid var(--border); border-radius: var(--radius); padding: 8px 12px; font-size: 14px; width: 100%; outline: none; }
+input:focus, textarea:focus { border-color: var(--primary); }
+textarea { resize: vertical; min-height: 100px; }
+
+.btn { padding: 8px 16px; border: none; border-radius: var(--radius); cursor: pointer; font-size: 14px; transition: all .2s; }
+.btn-primary { background: var(--primary); color: #fff; }
+.btn-primary:hover { opacity: .9; }
+.btn-danger { background: var(--danger); color: #fff; }
+.btn-sm { padding: 4px 10px; font-size: 12px; }
+.btn-outline { background: transparent; border: 1px solid var(--border); color: var(--text-secondary); }
+.btn-outline:hover { border-color: var(--primary); color: var(--primary); }
+
+.tag { display: inline-block; padding: 2px 8px; background: var(--primary-light); color: var(--primary); border-radius: 12px; font-size: 12px; margin: 2px; }
+.tag-cloud .tag { cursor: pointer; font-size: 14px; padding: 4px 12px; margin: 4px; }
+
+.search-bar { display: flex; gap: 8px; margin-bottom: 16px; }
+.search-bar input { flex: 1; }
+
+.knowledge-item { padding: 16px; border-bottom: 1px solid var(--border); cursor: pointer; transition: background .2s; }
+.knowledge-item:last-child { border-bottom: none; }
+.knowledge-item:hover { background: #f9fafb; }
+.knowledge-item h3 { font-size: 15px; margin-bottom: 6px; }
+.knowledge-item p { font-size: 13px; color: var(--text-secondary); line-height: 1.5; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.knowledge-item .meta { display: flex; gap: 12px; margin-top: 8px; font-size: 12px; color: var(--text-secondary); }
+.knowledge-item .meta span { display: flex; align-items: center; gap: 4px; }
+
+.detail-panel { position: fixed; right: 0; top: 0; width: 500px; height: 100vh; background: var(--card); box-shadow: -4px 0 12px rgba(0,0,0,.1); transform: translateX(100%); transition: transform .3s; z-index: 100; overflow-y: auto; padding: 24px; }
+.detail-panel.open { transform: translateX(0); }
+.detail-panel .close-btn { position: absolute; top: 12px; right: 12px; background: none; border: none; font-size: 20px; cursor: pointer; color: var(--text-secondary); }
+.detail-panel h2 { font-size: 20px; margin-bottom: 12px; padding-right: 30px; }
+.detail-panel .content { white-space: pre-wrap; line-height: 1.7; margin: 16px 0; padding: 16px; background: #f9fafb; border-radius: var(--radius); font-size: 14px; }
+.detail-panel .related { margin-top: 16px; }
+.detail-panel .related a { color: var(--primary); text-decoration: none; display: block; padding: 4px 0; }
+
+.stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 24px; }
+.stat-card { background: var(--card); border-radius: var(--radius); box-shadow: var(--shadow); padding: 20px; text-align: center; }
+.stat-card .number { font-size: 32px; font-weight: 700; color: var(--primary); }
+.stat-card .label { font-size: 13px; color: var(--text-secondary); margin-top: 4px; }
+
+.upload-zone { border: 2px dashed var(--border); border-radius: var(--radius); padding: 40px; text-align: center; cursor: pointer; transition: all .2s; }
+.upload-zone:hover, .upload-zone.dragover { border-color: var(--primary); background: var(--primary-light); }
+.upload-zone input { display: none; }
+
+.form-group { margin-bottom: 16px; }
+.form-group label { display: block; margin-bottom: 6px; font-size: 14px; font-weight: 500; }
+
+.task-list { list-style: none; }
+.task-list li { display: flex; justify-content: space-between; align-items: center; padding: 12px 0; border-bottom: 1px solid var(--border); }
+.task-list li:last-child { border-bottom: none; }
+
+.pagination { display: flex; gap: 8px; justify-content: center; margin-top: 16px; }
+
+.toast { position: fixed; top: 20px; right: 20px; padding: 12px 20px; border-radius: var(--radius); color: #fff; font-size: 14px; z-index: 200; transform: translateX(120%); transition: transform .3s; }
+.toast.show { transform: translateX(0); }
+.toast.success { background: var(--success); }
+.toast.error { background: var(--danger); }
+
+.hidden { display: none !important; }
+
+@media (max-width: 768px) {
+  .sidebar { display: none; }
+  .main { margin-left: 0; }
+  .stats-grid { grid-template-columns: repeat(2, 1fr); }
+  .detail-panel { width: 100%; }
+}
+</style>
+</head>
+<body>
+<div class="app">
+  <nav class="sidebar">
+    <h1>📚 <span>Know</span></h1>
+    <a class="nav-item active" data-page="list">知识列表</a>
+    <a class="nav-item" data-page="add">手动录入</a>
+    <a class="nav-item" data-page="upload">文件上传</a>
+    <a class="nav-item" data-page="tags">标签云</a>
+    <a class="nav-item" data-page="maintain">维护面板</a>
+  </nav>
+
+  <div class="main">
+    <!-- Knowledge List -->
+    <div id="page-list">
+      <div class="search-bar">
+        <input id="search-input" placeholder="搜索知识..." />
+        <button class="btn btn-primary" onclick="doSearch()">搜索</button>
+        <button class="btn btn-outline" onclick="clearSearch()">清空</button>
+      </div>
+      <div class="card">
+        <div class="card-header">
+          <h2>知识列表</h2>
+          <span id="list-total" style="color:var(--text-secondary);font-size:13px;"></span>
+        </div>
+        <div id="knowledge-list"></div>
+        <div class="pagination" id="pagination"></div>
+      </div>
+    </div>
+
+    <!-- Add Knowledge -->
+    <div id="page-add" class="hidden">
+      <div class="card">
+        <h2 style="margin-bottom:16px;">手动录入知识</h2>
+        <div class="form-group">
+          <label>标题</label>
+          <input id="add-title" placeholder="知识标题（可留空自动生成）" />
+        </div>
+        <div class="form-group">
+          <label>内容 *</label>
+          <textarea id="add-content" rows="8" placeholder="知识内容..."></textarea>
+        </div>
+        <div class="form-group">
+          <label>标签</label>
+          <input id="add-tags" placeholder="逗号分隔，如：Go, 数据库, 性能优化" />
+        </div>
+        <button class="btn btn-primary" onclick="addKnowledge()">保存</button>
+      </div>
+    </div>
+
+    <!-- File Upload -->
+    <div id="page-upload" class="hidden">
+      <div class="card">
+        <h2 style="margin-bottom:16px;">文件上传</h2>
+        <div class="upload-zone" id="upload-zone" onclick="document.getElementById('file-input').click()">
+          <input type="file" id="file-input" accept=".txt,.md,.json,.csv" onchange="handleFileSelect(event)" />
+          <p style="font-size:16px;margin-bottom:8px;">点击或拖拽文件到此处</p>
+          <p style="font-size:13px;color:var(--text-secondary);">支持 .txt .md .json .csv（纯文本格式）</p>
+          <p style="font-size:12px;color:var(--text-secondary);margin-top:4px;">PDF 请通过 AI 工具读取后使用 MCP note_import 导入</p>
+        </div>
+        <div class="form-group" style="margin-top:16px;">
+          <label>分段模式</label>
+          <select id="chunk-mode">
+            <option value="auto">自动分段 (auto)</option>
+            <option value="single">整篇一条 (single)</option>
+          </select>
+        </div>
+        <div id="upload-result" class="hidden" style="margin-top:16px;padding:12px;background:#f0fdf4;border-radius:var(--radius);"></div>
+      </div>
+    </div>
+
+    <!-- Tags -->
+    <div id="page-tags" class="hidden">
+      <div class="card">
+        <h2 style="margin-bottom:16px;">标签云</h2>
+        <div class="tag-cloud" id="tag-cloud"></div>
+      </div>
+    </div>
+
+    <!-- Maintain -->
+    <div id="page-maintain" class="hidden">
+      <div class="stats-grid" id="stats-grid"></div>
+      <div class="card">
+        <div class="card-header">
+          <h2>维护任务</h2>
+          <button class="btn btn-primary" onclick="runAllTasks()">运行全部</button>
+        </div>
+        <ul class="task-list" id="task-list"></ul>
+        <div id="maintain-result" class="hidden" style="margin-top:16px;padding:12px;background:#f0fdf4;border-radius:var(--radius);white-space:pre-wrap;font-size:13px;"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Detail Panel -->
+<div class="detail-panel" id="detail-panel">
+  <button class="close-btn" onclick="closeDetail()">✕</button>
+  <div id="detail-content"></div>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<script>
+const API = window.location.origin;
+let currentPage = 'list';
+let listOffset = 0;
+const listLimit = 20;
+let searchMode = false;
+
+// Navigation
+document.querySelectorAll('.nav-item').forEach(el => {
+  el.addEventListener('click', () => {
+    document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+    el.classList.add('active');
+    const page = el.dataset.page;
+    document.querySelectorAll('.main > div').forEach(p => p.classList.add('hidden'));
+    document.getElementById('page-' + page).classList.remove('hidden');
+    currentPage = page;
+    if (page === 'list') loadList();
+    if (page === 'tags') loadTags();
+    if (page === 'maintain') loadMaintain();
+  });
+});
+
+// API helper
+async function api(path, opts = {}) {
+  const url = API + path;
+  const res = await fetch(url, {
+    headers: { 'Content-Type': 'application/json', ...opts.headers },
+    ...opts
+  });
+  return res.json();
+}
+
+// Toast
+function toast(msg, type = 'success') {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className = 'toast ' + type + ' show';
+  setTimeout(() => el.classList.remove('show'), 3000);
+}
+
+// Knowledge List
+async function loadList() {
+  const data = await api(`/api/knowledge?offset=${listOffset}&limit=${listLimit}`);
+  renderList(data);
+}
+
+function renderList(data) {
+  const items = data.items || [];
+  const total = data.total || 0;
+  const entryCount = data.entry_count || 0;
+  const totalLabel = searchMode && entryCount
+    ? `${entryCount} 个入口命中，展开 ${total} 条关联知识`
+    : `共 ${total} 条`;
+  document.getElementById('list-total').textContent = totalLabel;
+  const el = document.getElementById('knowledge-list');
+  if (!items || items.length === 0) {
+    el.innerHTML = '<p style="padding:20px;text-align:center;color:var(--text-secondary);">暂无知识</p>';
+    document.getElementById('pagination').innerHTML = '';
+    return;
+  }
+  el.innerHTML = items.map(item => {
+    const k = item.Item || item;
+    const tags = (k.Tags || []).map(t => `<span class="tag">${esc(t)}</span>`).join('');
+    const retriever = item.Retriever || '';
+    const isExpanded = retriever === 'expansion' || retriever === 'source_fragment';
+    const retrieverLabel = retriever === 'keyword' ? '关键词' : retriever === 'fts' ? '全文' : retriever === 'vector' ? '语义' : retriever === 'expansion' ? '关联展开' : retriever === 'source_fragment' ? '源碎片' : '';
+    const borderStyle = isExpanded ? 'border-left:3px solid var(--warning);padding-left:13px;' : '';
+    const score = item.Score ? `<span>相关度: ${(item.Score * 100).toFixed(0)}%</span>` : '';
+    const statusBadge = k.Status === 'synthesis' ? '<span style="color:var(--success);font-weight:600;">融合</span>' : k.Status === 'consolidated' ? '<span style="color:var(--text-secondary);">已合并</span>' : '';
+    return `
+      <div class="knowledge-item" style="${borderStyle}" onclick="showDetail(${JSON.stringify(k.ID)})">
+        <h3>${esc(k.Title)} ${statusBadge} ${retrieverLabel ? `<span style="font-size:11px;color:var(--text-secondary);font-weight:400;margin-left:8px;">[${retrieverLabel}]</span>` : ''}</h3>
+        <p>${esc(k.Content.substring(0, 200))}</p>
+        <div style="margin-top:6px;">${tags}</div>
+        <div class="meta">
+          <span>来源: ${k.Source || 'manual'}</span>
+          <span>命中: ${k.HitCount || 0}</span>
+          <span>有用: ${k.UsefulCount || 0}</span>
+          ${score}
+        </div>
+      </div>`;
+  }).join('');
+
+  if (!searchMode) {
+    const pages = Math.ceil(total / listLimit);
+    const cur = Math.floor(listOffset / listLimit);
+    let html = '';
+    for (let i = 0; i < pages && i < 10; i++) {
+      html += `<button class="btn btn-sm ${i === cur ? 'btn-primary' : 'btn-outline'}" onclick="goPage(${i})">${i + 1}</button>`;
+    }
+    document.getElementById('pagination').innerHTML = html;
+  } else {
+    document.getElementById('pagination').innerHTML = '';
+  }
+}
+
+function goPage(page) {
+  listOffset = page * listLimit;
+  loadList();
+}
+
+// Search
+async function doSearch() {
+  const q = document.getElementById('search-input').value.trim();
+  if (!q) { clearSearch(); return; }
+  searchMode = true;
+  const data = await api(`/api/search?q=${encodeURIComponent(q)}&limit=20`);
+  renderList(data);
+}
+
+function clearSearch() {
+  document.getElementById('search-input').value = '';
+  searchMode = false;
+  listOffset = 0;
+  loadList();
+}
+
+document.getElementById('search-input').addEventListener('keydown', e => { if (e.key === 'Enter') doSearch(); });
+
+// Detail
+async function showDetail(id) {
+  const item = await api(`/api/knowledge/${id}`);
+  if (!item || item.error) { toast('加载失败', 'error'); return; }
+
+  let relatedHTML = '';
+  if (item.RelatedIDs && item.RelatedIDs.length > 0) {
+    relatedHTML = '<div class="related"><h3>关联知识</h3>' +
+      item.RelatedIDs.map(rid => `<a href="#" onclick="showDetail(${JSON.stringify(rid)});return false;">${esc(rid)}</a>`).join('') +
+      '</div>';
+  }
+
+  document.getElementById('detail-content').innerHTML = `
+    <h2>${esc(item.Title)}</h2>
+    <div style="margin-bottom:12px;">
+      ${(item.Tags || []).map(t => `<span class="tag">${esc(t)}</span>`).join('')}
+    </div>
+    <div style="font-size:13px;color:var(--text-secondary);margin-bottom:8px;">
+      来源: ${item.Source} | 状态: ${item.Status} | 命中: ${item.HitCount} | 有用: ${item.UsefulCount}
+    </div>
+    ${item.Summary ? `<div style="padding:12px;background:#eff6ff;border-radius:var(--radius);margin-bottom:12px;font-size:14px;"><strong>摘要:</strong> ${esc(item.Summary)}</div>` : ''}
+    <div class="content">${esc(item.Content)}</div>
+    <div style="display:flex;gap:8px;">
+      <button class="btn btn-primary btn-sm" onclick="markUseful(${JSON.stringify(item.ID)})">标记有用</button>
+      <button class="btn btn-danger btn-sm" onclick="deleteItem(${JSON.stringify(item.ID)})">删除</button>
+    </div>
+    ${relatedHTML}
+  `;
+  document.getElementById('detail-panel').classList.add('open');
+}
+
+function closeDetail() {
+  document.getElementById('detail-panel').classList.remove('open');
+}
+
+async function markUseful(id) {
+  await api('/api/feedback', { method: 'POST', body: JSON.stringify({ item_id: id }) });
+  toast('已标记为有用');
+}
+
+async function deleteItem(id) {
+  if (!confirm('确定删除？')) return;
+  await api(`/api/knowledge/${id}`, { method: 'DELETE' });
+  toast('已删除');
+  closeDetail();
+  loadList();
+}
+
+// Add Knowledge
+async function addKnowledge() {
+  const content = document.getElementById('add-content').value.trim();
+  if (!content) { toast('内容不能为空', 'error'); return; }
+
+  const tagsStr = document.getElementById('add-tags').value.trim();
+  const tags = tagsStr ? tagsStr.split(',').map(t => t.trim()).filter(Boolean) : [];
+
+  const result = await api('/api/knowledge', {
+    method: 'POST',
+    body: JSON.stringify({
+      title: document.getElementById('add-title').value.trim(),
+      content,
+      tags,
+      source: 'manual'
+    })
+  });
+
+  if (result.error) { toast(result.error, 'error'); return; }
+  toast(`保存成功 (${result.action})`);
+  document.getElementById('add-title').value = '';
+  document.getElementById('add-content').value = '';
+  document.getElementById('add-tags').value = '';
+}
+
+// File Upload
+const uploadZone = document.getElementById('upload-zone');
+uploadZone.addEventListener('dragover', e => { e.preventDefault(); uploadZone.classList.add('dragover'); });
+uploadZone.addEventListener('dragleave', () => uploadZone.classList.remove('dragover'));
+uploadZone.addEventListener('drop', e => {
+  e.preventDefault();
+  uploadZone.classList.remove('dragover');
+  if (e.dataTransfer.files.length > 0) uploadFile(e.dataTransfer.files[0]);
+});
+
+function handleFileSelect(e) {
+  if (e.target.files.length > 0) uploadFile(e.target.files[0]);
+}
+
+async function uploadFile(file) {
+  const formData = new FormData();
+  formData.append('file', file);
+  formData.append('chunk_mode', document.getElementById('chunk-mode').value);
+
+  const res = await fetch(API + '/api/import', { method: 'POST', body: formData });
+  const result = await res.json();
+
+  const el = document.getElementById('upload-result');
+  if (result.error) {
+    el.style.background = '#fef2f2';
+    el.textContent = `上传失败: ${result.error}`;
+  } else {
+    el.style.background = '#f0fdf4';
+    el.innerHTML = `✅ 导入成功: ${result.file}<br>生成 ${result.count} 条知识`;
+  }
+  el.classList.remove('hidden');
+}
+
+// Tags
+async function loadTags() {
+  const stats = await api('/api/stats');
+  const tags = stats.tags || {};
+  const entries = Object.entries(tags).sort((a, b) => b[1] - a[1]);
+
+  const maxCount = Math.max(...entries.map(e => e[1]), 1);
+  document.getElementById('tag-cloud').innerHTML = entries.map(([tag, count]) => {
+    const size = 12 + (count / maxCount) * 16;
+    return `<span class="tag" style="font-size:${size}px;" onclick="searchByTag(${JSON.stringify(tag)})">${esc(tag)} (${count})</span>`;
+  }).join('') || '<p style="color:var(--text-secondary);">暂无标签</p>';
+}
+
+function searchByTag(tag) {
+  document.getElementById('search-input').value = tag;
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  document.querySelector('[data-page="list"]').classList.add('active');
+  document.querySelectorAll('.main > div').forEach(p => p.classList.add('hidden'));
+  document.getElementById('page-list').classList.remove('hidden');
+  doSearch();
+}
+
+// Maintain
+async function loadMaintain() {
+  const [stats, tasks] = await Promise.all([api('/api/stats'), api('/api/maintain')]);
+
+  document.getElementById('stats-grid').innerHTML = `
+    <div class="stat-card"><div class="number">${stats.total || 0}</div><div class="label">总知识数</div></div>
+    <div class="stat-card"><div class="number">${stats.active || 0}</div><div class="label">活跃</div></div>
+    <div class="stat-card"><div class="number">${stats.synthesis || 0}</div><div class="label">融合</div></div>
+    <div class="stat-card"><div class="number">${stats.consolidated || 0}</div><div class="label">已合并</div></div>
+  `;
+
+  const taskMeta = {
+    link_discovery: { label: '关联发现', desc: '扫描所有知识，通过向量相似度自动发现关联关系，建立知识之间的连接线索' },
+    consolidation: { label: '知识聚合', desc: '将关联数≥3的碎片知识打包成索引节点，方便检索时一次性拉出整个知识簇' },
+    decay: { label: '知识衰减', desc: '扫描90天内未被命中且未被标记有用的知识，降低其在搜索中的权重' },
+    tag_cluster: { label: '标签归一', desc: '通过AI识别同义标签（如 golang/Go/Go语言），统一为规范形式' },
+  };
+  const taskNames = tasks.tasks || [];
+  document.getElementById('task-list').innerHTML = taskNames.map(name => {
+    const meta = taskMeta[name] || { label: name, desc: '' };
+    return `
+    <li>
+      <div>
+        <strong>${meta.label}</strong> <span style="font-size:12px;color:var(--text-secondary);margin-left:4px;">(${name})</span>
+        <div style="font-size:13px;color:var(--text-secondary);margin-top:4px;">${meta.desc}</div>
+      </div>
+      <button class="btn btn-sm btn-outline" onclick="runTask(${JSON.stringify(name)})">运行</button>
+    </li>`;
+  }).join('') || '<li>无可用任务</li>';
+}
+
+async function runTask(name) {
+  toast(`正在运行 ${name}...`);
+  const result = await api('/api/maintain', { method: 'POST', body: JSON.stringify({ tasks: [name] }) });
+  const el = document.getElementById('maintain-result');
+  el.textContent = JSON.stringify(result.results, null, 2);
+  el.classList.remove('hidden');
+  toast(`${name} 完成`);
+  loadMaintain();
+}
+
+async function runAllTasks() {
+  toast('正在运行全部任务...');
+  const result = await api('/api/maintain', { method: 'POST', body: JSON.stringify({}) });
+  const el = document.getElementById('maintain-result');
+  el.textContent = JSON.stringify(result.results, null, 2);
+  el.classList.remove('hidden');
+  toast('全部任务完成');
+  loadMaintain();
+}
+
+function esc(s) { if (!s) return ''; const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+
+// Init
+loadList();
+</script>
+</body>
+</html>

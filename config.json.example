@@ -1,0 +1,22 @@
+{
+  "server": {
+    "addr": ":8081",
+    "cors_origins": [],
+    "api_key": ""
+  },
+  "store": {
+    "type": "postgres",
+    "dsn": "postgres://personalknow:your-db-password@postgres:5432/personalknow?sslmode=disable"
+  },
+  "retrievers": [
+    { "type": "keyword", "enabled": true, "params": { "fetch_limit": 500 } },
+    { "type": "fts", "enabled": true },
+    { "type": "vector", "enabled": true, "params": { "score_threshold": 0.7 } }
+  ],
+  "llm": {
+    "base_url": "https://api.openai.com",
+    "api_key": "your-api-key-here",
+    "chat_model": "gpt-4o-mini",
+    "embedding_model": "text-embedding-3-small"
+  }
+}
