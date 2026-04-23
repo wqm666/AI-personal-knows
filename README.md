@@ -1,5 +1,7 @@
 # Personal Know
 
+[中文文档](README_CN.md)
+
 > AI-native personal knowledge base with MCP integration — let your AI assistant remember, search, and evolve knowledge across conversations.
 
 Personal Know is a self-hosted knowledge management server that exposes both **MCP (Model Context Protocol)** tools and a **REST API**. AI agents (Claude Code, Cursor, GPT, etc.) can store, search, and maintain knowledge through MCP, while humans can manage knowledge through the built-in web UI.
