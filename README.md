@@ -1,48 +1,106 @@
-# Personal Know
+<p align="center">
+  <img src="https://img.shields.io/badge/Go-1.23-00ADD8?style=flat-square&logo=go" alt="Go">
+  <img src="https://img.shields.io/badge/PostgreSQL-16+pgvector-4169E1?style=flat-square&logo=postgresql" alt="PostgreSQL">
+  <img src="https://img.shields.io/badge/MCP-StreamableHTTP-8A2BE2?style=flat-square" alt="MCP">
+  <img src="https://img.shields.io/badge/License-MIT-green?style=flat-square" alt="License">
+  <a href="https://github.com/wqm666/AI-personal-knows/stargazers"><img src="https://img.shields.io/github/stars/wqm666/AI-personal-knows?style=flat-square" alt="Stars"></a>
+</p>
 
-[中文文档](README_CN.md)
+<h1 align="center">Personal Know</h1>
 
-> AI-native personal knowledge base with MCP integration — let your AI assistant remember, search, and evolve knowledge across conversations.
+<p align="center">
+  <strong>Build Your AI-Powered Digital Twin — Capture Every Knowledge Fragment, Never Forget Again</strong>
+</p>
 
-Personal Know is a self-hosted knowledge management server that exposes both **MCP (Model Context Protocol)** tools and a **REST API**. AI agents (Claude Code, Cursor, GPT, etc.) can store, search, and maintain knowledge through MCP, while humans can manage knowledge through the built-in web UI.
+<p align="center">
+  <a href="README_CN.md">中文文档</a> · <a href="https://github.com/wqm666/AI-personal-knows/issues">Report Bug</a> · <a href="https://github.com/wqm666/AI-personal-knows/issues">Request Feature</a>
+</p>
 
-## Features
+---
 
-- **MCP Protocol Support** — 7 tools for AI agents via StreamableHTTP
-- **Multi-Strategy Retrieval** — Vector similarity + Full-text search + Keyword matching, in parallel
-- **Smart Deduplication** — Vector-based dedup with 3 strategies: reinforce / relate / new
-- **Auto Knowledge Extraction** — LLM detects signals (errors, pitfalls) and extracts structured knowledge from conversations
-- **Knowledge Graph Expansion** — BFS traversal along `related_ids` to surface connected knowledge
-- **Self-Maintenance** — Background tasks for link discovery, consolidation, decay, and tag normalization
-- **Built-in Web UI** — Embedded SPA for browsing, searching, and managing knowledge
-- **Hexagonal Architecture** — Clean separation of ports and adapters for easy extension
+## The Problem
+
+We generate valuable knowledge every day — debugging sessions, architectural decisions, meeting insights, code patterns — but **99% of it evaporates**. It lives in chat histories, scattered notes, and our imperfect memory. When we need it most, it's gone.
+
+Traditional note-taking tools expect you to organize knowledge manually. But the most valuable knowledge — the kind that comes from trial and error, from debugging at 2 AM, from that conversation with a senior engineer — is **implicit and unstructured**. It doesn't fit neatly into folders.
+
+## The Vision: Your Digital Twin
+
+**Personal Know** is an AI-native personal knowledge base that turns you into a digital twin — an always-online version of yourself that remembers everything you've learned.
+
+```
+You debugging at 2 AM    ──→  AI captures the insight
+You reading a tech doc   ──→  AI extracts key knowledge
+You solving a tricky bug ──→  AI remembers the solution
+
+    3 months later, you (or your AI) face the same problem...
+    → Personal Know instantly recalls the solution ✨
+```
+
+It's not just a note app. It's a **second brain** that:
+
+- **Captures** knowledge fragments from AI conversations, documents, and manual input
+- **Connects** related knowledge automatically through semantic understanding
+- **Evolves** by consolidating fragments into structured insights over time
+- **Serves** your AI assistant (Claude, Cursor, GPT) so it truly "knows" you
+
+## Key Features
+
+### For Knowledge Capture
+- **Auto-Extraction from Conversations** — LLM detects valuable signals (errors, pitfalls, decisions) and extracts structured knowledge
+- **Document Import** — Import Markdown/text files with auto-chunking by headings
+- **Manual Input** — Quick-save knowledge via Web UI or API
+- **MCP Integration** — AI agents directly save learnings through `note_save` and `note_capture`
+
+### For Knowledge Retrieval
+- **Multi-Strategy Search** — Vector similarity + Full-text search + Keyword matching, running in parallel
+- **Knowledge Graph Expansion** — BFS traversal along `related_ids` surfaces connected knowledge you didn't know you had
+- **Smart Ranking** — Feedback-driven scoring: knowledge marked "useful" ranks higher
+
+### For Knowledge Evolution
+- **Smart Deduplication** — Vector-based 3-tier strategy: reinforce existing / relate similar / create new
+- **Auto Link Discovery** — Background task finds and connects semantically related knowledge
+- **Knowledge Consolidation** — LLM merges 3+ related fragments into synthesis nodes
+- **Tag Normalization** — LLM unifies synonymous tags (e.g., "golang" → "Go")
+- **Natural Decay** — Unused knowledge gracefully fades after 90 days
+
+### For Integration
+- **7 MCP Tools** — Full integration with Claude Code, Cursor, and any MCP-compatible AI
+- **REST API** — Complete CRUD + search + analytics endpoints
+- **Built-in Web UI** — Browse, search, and manage knowledge without leaving your browser
+- **Docker One-Click Deploy** — Up and running in under 2 minutes
 
 ## Architecture
 
 ```
-┌─────────────────┐     ┌─────────────────┐
-│   AI Agent       │     │   Web Browser    │
-│ (Claude/Cursor)  │     │   (Built-in UI)  │
-└────────┬─────────┘     └────────┬─────────┘
-         │ MCP (StreamableHTTP)    │ REST API
-         └──────────┬──────────────┘
-                    │
-         ┌──────────▼──────────┐
-         │   HTTP Server :8081  │
-         │  CORS + API Key Auth │
-         └──────────┬──────────┘
-                    │
-         ┌──────────▼──────────┐
-         │    Service Layer     │
-         │  (Business Logic)    │
-         └──────────┬──────────┘
-                    │
-    ┌───────────────┼───────────────┐
-    │               │               │
-┌───▼───┐   ┌──────▼──────┐   ┌───▼────┐
-│ Store  │   │ Orchestrator │   │  LLM   │
-│(pgvec) │   │ (3 retrievers)│  │ Client │
-└────────┘   └─────────────┘   └────────┘
+┌─────────────────────────────────────────────────┐
+│                  AI Clients                      │
+│  Claude Code / Cursor / ChatGPT / Any MCP Client│
+└──────────────────────┬──────────────────────────┘
+                       │ MCP (StreamableHTTP)
+┌──────────────────────▼──────────────────────────┐
+│                                                  │
+│   ┌──────────┐  ┌───────────┐  ┌─────────────┐  │
+│   │ MCP      │  │ REST API  │  │ Web UI      │  │
+│   │ Server   │  │ /api/*    │  │ (embedded)  │  │
+│   └────┬─────┘  └─────┬─────┘  └──────┬──────┘  │
+│        └──────────────┼───────────────┘          │
+│                       ▼                          │
+│            ┌─────────────────────┐               │
+│            │   Service Layer     │               │
+│            │   (Business Logic)  │               │
+│            └──────┬──────────────┘               │
+│                   │                              │
+│    ┌──────────────┼──────────────┐               │
+│    ▼              ▼              ▼               │
+│ ┌────────┐ ┌───────────────┐ ┌────────┐         │
+│ │ Store  │ │ Orchestrator  │ │  LLM   │         │
+│ │ pg +   │ │ Vector + FTS  │ │ Client │         │
+│ │pgvector│ │ + Keyword     │ │(OpenAI)│         │
+│ └────────┘ └───────────────┘ └────────┘         │
+│                                                  │
+│               Personal Know Server               │
+└──────────────────────────────────────────────────┘
 ```
 
 ## MCP Tools
@@ -52,7 +110,7 @@ Personal Know is a self-hosted knowledge management server that exposes both **M
 | `note_search` | Semantic search across the knowledge base |
 | `note_save` | Save knowledge with auto-dedup and linking |
 | `note_capture` | Extract knowledge from conversation sessions via LLM |
-| `note_import` | Import documents with auto-chunking by Markdown headings |
+| `note_import` | Import documents with auto-chunking |
 | `note_update` | Update existing knowledge items |
 | `note_feedback` | Mark knowledge as useful (affects ranking and decay) |
 | `note_maintain` | Trigger maintenance: link discovery, consolidation, decay, tag normalization |
@@ -67,10 +125,9 @@ Personal Know is a self-hosted knowledge management server that exposes both **M
 ### 1. Clone and configure
 
 ```bash
-git clone https://github.com/your-username/personal-know.git
-cd personal-know
+git clone https://github.com/wqm666/AI-personal-knows.git
+cd AI-personal-knows
 
-# Set up secrets
 cp .env.example .env
 cp config.json.example config.json
 
@@ -98,7 +155,7 @@ curl http://localhost:8081/health
 
 ### 4. Connect your AI agent
 
-Add to your MCP client configuration:
+**Claude Code / Cursor / Any MCP Client:**
 
 ```json
 {
@@ -109,6 +166,59 @@ Add to your MCP client configuration:
   }
 }
 ```
+
+Once connected, your AI assistant can:
+- `note_save` — Save knowledge during conversations
+- `note_search` — Recall relevant knowledge before writing code
+- `note_capture` — Extract learnings from debugging sessions
+
+## How It Works
+
+### Knowledge Lifecycle
+
+```
+ ┌──────────┐    ┌──────────┐    ┌──────────┐    ┌──────────┐
+ │ Capture  │───▶│  Embed   │───▶│  Dedup   │───▶│  Store   │
+ │          │    │          │    │          │    │          │
+ │ • chat   │    │ OpenAI   │    │ ≥0.95 ↻  │    │ pgvector │
+ │ • doc    │    │ embedding│    │ 0.75 🔗  │    │ + meta   │
+ │ • manual │    │          │    │ <0.75 ✚  │    │          │
+ └──────────┘    └──────────┘    └──────────┘    └──────────┘
+                                                       │
+                        ┌──────────────────────────────┘
+                        ▼
+ ┌──────────┐    ┌──────────┐    ┌──────────┐
+ │  Search  │───▶│  Expand  │───▶│ Maintain │
+ │          │    │          │    │          │
+ │ 3-way    │    │ BFS graph│    │ • links  │
+ │ parallel │    │ traversal│    │ • merge  │
+ │          │    │          │    │ • decay  │
+ └──────────┘    └──────────┘    └──────────┘
+```
+
+### Multi-Strategy Search
+
+1. **Parallel Retrieval** — Vector (cosine ≥ 0.7), Full-text (`tsvector`), Keyword (word frequency) run simultaneously
+2. **Merge & Dedup** — Same item from multiple retrievers keeps the highest score
+3. **BFS Graph Expansion** — Follow `related_ids` up to 2 layers deep (max 100 items)
+4. **Synthesis Resolve** — Expand `consolidated_from` for synthesis nodes
+
+### Smart Deduplication
+
+| Similarity | Action | Behavior |
+|-----------|--------|----------|
+| ≥ 0.95 | **Reinforce** | Skip save, increment `hit_count` on existing |
+| 0.75–0.95 | **Relate** | Save new + bidirectional link in transaction |
+| < 0.75 | **New** | Save as independent item |
+
+### Background Maintenance
+
+| Task | What It Does |
+|------|-------------|
+| `link_discovery` | Scan all items, connect those with similarity 0.75–0.95 |
+| `consolidation` | Merge 3+ related items into a synthesis node via LLM |
+| `tag_cluster` | Normalize synonymous tags via LLM (e.g., "golang" → "Go") |
+| `decay` | Mark items as decayed after 90 days with no hits |
 
 ## Configuration
 
@@ -139,10 +249,12 @@ Add to your MCP client configuration:
 }
 ```
 
-All fields can be overridden by environment variables:
+### Environment Variables
 
-| Environment Variable | Description |
-|---------------------|-------------|
+All fields can be overridden:
+
+| Variable | Description |
+|---------|-------------|
 | `DATABASE_URL` | PostgreSQL connection string |
 | `LLM_BASE_URL` | LLM API base URL |
 | `LLM_API_KEY` | LLM API key |
@@ -151,47 +263,6 @@ All fields can be overridden by environment variables:
 | `SERVER_ADDR` | Listen address (default `:8081`) |
 | `SERVER_API_KEY` | Optional API key for authentication |
 | `CORS_ORIGINS` | Comma-separated allowed origins |
-
-## How It Works
-
-### Knowledge Lifecycle
-
-```
- Create ─→ Embed ─→ Dedup ─→ Store ─→ Search ─→ Maintain
-   │                  │                    │          │
-   ├─ conversation    ├─ ≥0.95: reinforce  │          ├─ link discovery
-   ├─ document        ├─ 0.75~0.95: relate │          ├─ consolidation
-   └─ manual          └─ <0.75: new        │          ├─ tag normalization
-                                           │          └─ decay (90 days)
-                                           │
-                                      Multi-strategy
-                                      retrieval + BFS
-                                      graph expansion
-```
-
-### Search Pipeline
-
-1. **Multi-Strategy Retrieval** — Vector (cosine ≥ 0.7), FTS (`tsvector`), Keyword (word frequency) run in parallel
-2. **Merge & Dedup** — Same item from multiple retrievers keeps the highest score
-3. **BFS Graph Expansion** — Follow `related_ids` up to 2 layers deep (max 100 items)
-4. **Synthesis Resolve** — Expand `consolidated_from` for synthesis nodes
-
-### Dedup Strategy (on save)
-
-| Similarity | Action | Behavior |
-|-----------|--------|----------|
-| ≥ 0.95 | **Reinforce** | Skip save, increment `hit_count` on existing |
-| 0.75–0.95 | **Relate** | Save new item + bidirectional link in transaction |
-| < 0.75 | **New** | Save as independent item |
-
-### Maintenance Tasks
-
-| Task | Description |
-|------|-------------|
-| `link_discovery` | Find and link items with similarity 0.75–0.95 |
-| `consolidation` | Merge 3+ related items into a synthesis node via LLM |
-| `tag_cluster` | Normalize synonymous tags via LLM (e.g., "golang" → "Go") |
-| `decay` | Mark items as decayed after 90 days with no hits and no feedback |
 
 ## REST API
 
@@ -203,7 +274,7 @@ All fields can be overridden by environment variables:
 | PUT | `/api/knowledge/:id` | Update item |
 | DELETE | `/api/knowledge/:id` | Delete item |
 | GET/POST | `/api/search` | Search knowledge base |
-| POST | `/api/import` | Import document (multipart or JSON) |
+| POST | `/api/import` | Import document |
 | POST | `/api/capture` | Capture session knowledge |
 | POST | `/api/feedback` | Record useful feedback |
 | GET/POST | `/api/maintain` | List or run maintenance tasks |
@@ -212,39 +283,80 @@ All fields can be overridden by environment variables:
 
 ## Tech Stack
 
-- **Language**: Go 1.23
-- **Database**: PostgreSQL 16 + pgvector (HNSW index, cosine distance)
-- **MCP**: [mcp-go](https://github.com/mark3labs/mcp-go) (StreamableHTTP transport)
-- **LLM**: OpenAI-compatible API (embeddings + chat)
-- **Frontend**: Embedded vanilla JS SPA
-- **Deployment**: Docker Compose
+| Component | Technology |
+|-----------|-----------|
+| Language | Go 1.23 |
+| Database | PostgreSQL 16 + pgvector (HNSW, cosine) |
+| MCP | [mcp-go](https://github.com/mark3labs/mcp-go) (StreamableHTTP) |
+| LLM | OpenAI-compatible API |
+| Frontend | Embedded vanilla JS SPA |
+| Deploy | Docker Compose |
 
 ## Project Structure
 
 ```
 .
-├── cmd/server/          # Entry point & dependency wiring
+├── cmd/server/            # Entry point & dependency wiring
 ├── internal/
-│   ├── domain/          # Domain models (Knowledge, SearchHit, etc.)
-│   ├── port/            # Interface definitions (Store, Retriever, Embedder, etc.)
-│   ├── service/         # Business logic orchestration
+│   ├── domain/            # Domain models (Knowledge, SearchHit, etc.)
+│   ├── port/              # Interface definitions (Store, Retriever, Embedder, etc.)
+│   ├── service/           # Business logic orchestration
 │   └── adapter/
-│       ├── api/         # REST API router
-│       ├── transport/   # MCP server & tool handlers
-│       ├── store/       # PostgreSQL + pgvector implementation
-│       ├── retriever/   # Vector, FTS, Keyword retrievers + orchestrator
-│       ├── embedder/    # OpenAI-compatible embedding client
-│       ├── llm/         # OpenAI-compatible chat client
-│       ├── dedup/       # Vector similarity deduplication
-│       ├── maintain/    # Link discovery, consolidation, decay, tag clustering
-│       └── identity/    # Owner identity provider
-├── web/                 # Embedded static web UI
-├── config.json.example  # Configuration template
-├── docker-compose.yml   # Container orchestration
-├── Dockerfile           # Multi-stage build
-└── deploy.sh            # One-click deployment script
+│       ├── api/           # REST API router
+│       ├── transport/     # MCP server & tool handlers
+│       ├── store/         # PostgreSQL + pgvector implementation
+│       ├── retriever/     # Vector, FTS, Keyword + orchestrator
+│       ├── embedder/      # OpenAI-compatible embedding client
+│       ├── llm/           # OpenAI-compatible chat client
+│       ├── dedup/         # Vector similarity deduplication
+│       ├── maintain/      # Link discovery, consolidation, decay, tags
+│       └── identity/      # Owner identity provider
+├── web/                   # Embedded static web UI
+├── config.json.example
+├── docker-compose.yml
+├── Dockerfile
+└── deploy.sh
 ```
+
+## Roadmap
+
+- [x] Multi-strategy retrieval (Vector + FTS + Keyword)
+- [x] Smart deduplication with 3-tier strategy
+- [x] Auto knowledge extraction from conversations
+- [x] Knowledge graph with BFS expansion
+- [x] Background maintenance (link discovery, consolidation, decay, tag clustering)
+- [x] Built-in Web UI
+- [ ] Multi-user support with authentication
+- [ ] Browser extension for one-click knowledge capture
+- [ ] Mobile app (iOS / Android)
+- [ ] Import from Notion / Obsidian / Logseq
+- [ ] Scheduled auto-maintenance
+- [ ] Knowledge sharing between personal and team knowledge bases
+- [ ] Plugin system for custom knowledge sources
+
+## Contributing
+
+Contributions are welcome! Whether it's bug reports, feature requests, or pull requests.
+
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'feat: add amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
+
+## Related Projects
+
+- [AI-team-know](https://github.com/wqm666/AI-team-know) — Team knowledge base for shared team intelligence
+- [mcp-go](https://github.com/mark3labs/mcp-go) — Go implementation of MCP protocol
+
+## Star History
+
+<p align="center">
+  <a href="https://github.com/wqm666/AI-personal-knows/stargazers">
+    <img src="https://starchart.cc/wqm666/AI-personal-knows.svg?variant=adaptive" alt="Star History Chart" width="600">
+  </a>
+</p>
 
 ## License
 
-[MIT](LICENSE)
+[MIT](LICENSE) — Use it, fork it, build on it.
