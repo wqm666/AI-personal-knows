@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(curl -s \"http://192.168.56.101:8081/api/knowledge?offset=0&limit=5\")",
+      "Bash(curl -s \"http://192.168.56.101:8081/api/knowledge/8eb20b39-18aa-4fcb-ba9c-7688915fda37\")"
+    ]
+  }
+}
