@@ -84,9 +84,9 @@ func (s *PgStore) executor(ctx context.Context) dbExecutor {
 
 func (s *PgStore) Save(ctx context.Context, k *domain.Knowledge) error {
 	query := `
-		INSERT INTO knowledge (id, owner_id, title, content, summary, source, source_ref, knowledge_type, tags, embedding,
+		INSERT INTO knowledge (id, owner_id, title, content, summary, source, source_ref, knowledge_type, knowledge_category, tags, embedding,
 			related_ids, superseded_by, status, consolidated_from, hit_count, useful_count, last_hit_at, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)`
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)`
 
 	knowledgeType := k.KnowledgeType
 	if knowledgeType == "" {
@@ -95,7 +95,7 @@ func (s *PgStore) Save(ctx context.Context, k *domain.Knowledge) error {
 
 	_, err := s.executor(ctx).ExecContext(ctx, query,
 		k.ID, k.OwnerID, k.Title, k.Content, k.Summary,
-		k.Source, k.SourceRef, knowledgeType,
+		k.Source, k.SourceRef, knowledgeType, k.KnowledgeCategory,
 		pq.Array(k.Tags),
 		embeddingToString(k.Embedding),
 		pq.Array(k.RelatedIDs),
@@ -109,14 +109,14 @@ func (s *PgStore) Save(ctx context.Context, k *domain.Knowledge) error {
 }
 
 func (s *PgStore) Get(ctx context.Context, ownerID, id string) (*domain.Knowledge, error) {
-	query := `SELECT id, owner_id, title, content, summary, source, source_ref, knowledge_type, tags,
+	query := `SELECT id, owner_id, title, content, summary, source, source_ref, knowledge_type, knowledge_category, tags,
 		related_ids, superseded_by, status, consolidated_from, hit_count, useful_count, last_hit_at,
 		created_at, updated_at FROM knowledge WHERE owner_id = $1 AND id = $2`
 
 	k := &domain.Knowledge{}
 	err := s.executor(ctx).QueryRowContext(ctx, query, ownerID, id).Scan(
 		&k.ID, &k.OwnerID, &k.Title, &k.Content, &k.Summary,
-		&k.Source, &k.SourceRef, &k.KnowledgeType,
+		&k.Source, &k.SourceRef, &k.KnowledgeType, &k.KnowledgeCategory,
 		pq.Array(&k.Tags),
 		pq.Array(&k.RelatedIDs),
 		&k.SupersededBy,
@@ -132,13 +132,13 @@ func (s *PgStore) Get(ctx context.Context, ownerID, id string) (*domain.Knowledg
 
 func (s *PgStore) Update(ctx context.Context, k *domain.Knowledge) error {
 	query := `UPDATE knowledge SET title=$3, content=$4, summary=$5, source=$6, source_ref=$7,
-		knowledge_type=$8, tags=$9, related_ids=$10, superseded_by=$11, status=$12, consolidated_from=$13,
-		hit_count=$14, useful_count=$15, last_hit_at=$16, updated_at=$17
+		knowledge_type=$8, knowledge_category=$9, tags=$10, related_ids=$11, superseded_by=$12, status=$13, consolidated_from=$14,
+		hit_count=$15, useful_count=$16, last_hit_at=$17, updated_at=$18
 		WHERE owner_id=$1 AND id=$2`
 
 	_, err := s.executor(ctx).ExecContext(ctx, query,
 		k.OwnerID, k.ID, k.Title, k.Content, k.Summary,
-		k.Source, k.SourceRef, k.KnowledgeType,
+		k.Source, k.SourceRef, k.KnowledgeType, k.KnowledgeCategory,
 		pq.Array(k.Tags),
 		pq.Array(k.RelatedIDs),
 		k.SupersededBy,
@@ -155,14 +155,14 @@ func (s *PgStore) Delete(ctx context.Context, ownerID, id string) error {
 }
 
 func (s *PgStore) List(ctx context.Context, ownerID string, offset, limit int) ([]*domain.Knowledge, error) {
-	query := `SELECT id, owner_id, title, content, summary, source, source_ref, knowledge_type, tags,
+	query := `SELECT id, owner_id, title, content, summary, source, source_ref, knowledge_type, knowledge_category, tags,
 		related_ids, superseded_by, status, consolidated_from, hit_count, useful_count, last_hit_at,
 		created_at, updated_at FROM knowledge WHERE owner_id = $1 ORDER BY created_at DESC LIMIT $2 OFFSET $3`
 	return s.scanMultiple(ctx, query, ownerID, limit, offset)
 }
 
 func (s *PgStore) ListByStatus(ctx context.Context, ownerID, status string, offset, limit int) ([]*domain.Knowledge, error) {
-	query := `SELECT id, owner_id, title, content, summary, source, source_ref, knowledge_type, tags,
+	query := `SELECT id, owner_id, title, content, summary, source, source_ref, knowledge_type, knowledge_category, tags,
 		related_ids, superseded_by, status, consolidated_from, hit_count, useful_count, last_hit_at,
 		created_at, updated_at FROM knowledge WHERE owner_id = $1 AND status = $2 ORDER BY created_at DESC LIMIT $3 OFFSET $4`
 	return s.scanMultiple(ctx, query, ownerID, status, limit, offset)
@@ -172,7 +172,7 @@ func (s *PgStore) ListByIDs(ctx context.Context, ownerID string, ids []string) (
 	if len(ids) == 0 {
 		return nil, nil
 	}
-	query := `SELECT id, owner_id, title, content, summary, source, source_ref, knowledge_type, tags,
+	query := `SELECT id, owner_id, title, content, summary, source, source_ref, knowledge_type, knowledge_category, tags,
 		related_ids, superseded_by, status, consolidated_from, hit_count, useful_count, last_hit_at,
 		created_at, updated_at FROM knowledge WHERE owner_id = $1 AND id = ANY($2)`
 	return s.scanMultiple(ctx, query, ownerID, pq.Array(ids))
@@ -215,6 +215,12 @@ func (s *PgStore) UpdateTags(ctx context.Context, ownerID, id string, tags []str
 	return err
 }
 
+func (s *PgStore) UpdateKnowledgeCategory(ctx context.Context, ownerID, id string, category string) error {
+	_, err := s.executor(ctx).ExecContext(ctx,
+		`UPDATE knowledge SET knowledge_category = $3, updated_at = NOW() WHERE owner_id = $1 AND id = $2`, ownerID, id, category)
+	return err
+}
+
 func (s *PgStore) UpdateEmbedding(ctx context.Context, ownerID, id string, embedding []float64) error {
 	_, err := s.executor(ctx).ExecContext(ctx,
 		`UPDATE knowledge SET embedding = $3, updated_at = NOW() WHERE owner_id = $1 AND id = $2`, ownerID, id, embeddingToString(embedding))
@@ -253,7 +259,7 @@ func (s *PgStore) AllOwnerIDs(ctx context.Context) ([]string, error) {
 
 // SearchByVector returns top-k items by cosine similarity within an owner's space.
 func (s *PgStore) SearchByVector(ctx context.Context, ownerID string, embedding []float64, limit int, scoreThreshold float64) ([]VectorHit, error) {
-	query := `SELECT id, owner_id, title, content, summary, source, source_ref, knowledge_type, tags,
+	query := `SELECT id, owner_id, title, content, summary, source, source_ref, knowledge_type, knowledge_category, tags,
 		related_ids, superseded_by, status, consolidated_from, hit_count, useful_count, last_hit_at,
 		created_at, updated_at,
 		1 - (embedding <=> $1) AS score
@@ -273,7 +279,7 @@ func (s *PgStore) SearchByVector(ctx context.Context, ownerID string, embedding 
 		var h VectorHit
 		err := rows.Scan(
 			&h.Item.ID, &h.Item.OwnerID, &h.Item.Title, &h.Item.Content, &h.Item.Summary,
-			&h.Item.Source, &h.Item.SourceRef, &h.Item.KnowledgeType,
+			&h.Item.Source, &h.Item.SourceRef, &h.Item.KnowledgeType, &h.Item.KnowledgeCategory,
 			pq.Array(&h.Item.Tags),
 			pq.Array(&h.Item.RelatedIDs),
 			&h.Item.SupersededBy,
@@ -311,7 +317,7 @@ func (s *PgStore) SearchByFTS(ctx context.Context, ownerID, queryText string, li
 	}
 	tsQuery := strings.Join(sanitized, " | ")
 
-	query := `SELECT id, owner_id, title, content, summary, source, source_ref, knowledge_type, tags,
+	query := `SELECT id, owner_id, title, content, summary, source, source_ref, knowledge_type, knowledge_category, tags,
 		related_ids, superseded_by, status, consolidated_from, hit_count, useful_count, last_hit_at,
 		created_at, updated_at,
 		ts_rank(to_tsvector('simple', title || ' ' || content), to_tsquery('simple', $1)) AS score
@@ -333,7 +339,7 @@ func (s *PgStore) SearchByFTS(ctx context.Context, ownerID, queryText string, li
 		var h VectorHit
 		err := rows.Scan(
 			&h.Item.ID, &h.Item.OwnerID, &h.Item.Title, &h.Item.Content, &h.Item.Summary,
-			&h.Item.Source, &h.Item.SourceRef, &h.Item.KnowledgeType,
+			&h.Item.Source, &h.Item.SourceRef, &h.Item.KnowledgeType, &h.Item.KnowledgeCategory,
 			pq.Array(&h.Item.Tags),
 			pq.Array(&h.Item.RelatedIDs),
 			&h.Item.SupersededBy,
@@ -352,7 +358,7 @@ func (s *PgStore) SearchByFTS(ctx context.Context, ownerID, queryText string, li
 
 // FindSimilar finds items similar to the given embedding above a threshold within an owner's space.
 func (s *PgStore) FindSimilar(ctx context.Context, ownerID string, embedding []float64, threshold float64, excludeID string, limit int) ([]VectorHit, error) {
-	query := `SELECT id, owner_id, title, content, summary, source, source_ref, knowledge_type, tags,
+	query := `SELECT id, owner_id, title, content, summary, source, source_ref, knowledge_type, knowledge_category, tags,
 		related_ids, superseded_by, status, consolidated_from, hit_count, useful_count, last_hit_at,
 		created_at, updated_at,
 		1 - (embedding <=> $1) AS score
@@ -373,7 +379,7 @@ func (s *PgStore) FindSimilar(ctx context.Context, ownerID string, embedding []f
 		var h VectorHit
 		err := rows.Scan(
 			&h.Item.ID, &h.Item.OwnerID, &h.Item.Title, &h.Item.Content, &h.Item.Summary,
-			&h.Item.Source, &h.Item.SourceRef, &h.Item.KnowledgeType,
+			&h.Item.Source, &h.Item.SourceRef, &h.Item.KnowledgeType, &h.Item.KnowledgeCategory,
 			pq.Array(&h.Item.Tags),
 			pq.Array(&h.Item.RelatedIDs),
 			&h.Item.SupersededBy,
@@ -392,7 +398,7 @@ func (s *PgStore) FindSimilar(ctx context.Context, ownerID string, embedding []f
 
 // ListWithoutEmbedding returns items that need embedding generation within an owner's space.
 func (s *PgStore) ListWithoutEmbedding(ctx context.Context, ownerID string, limit int) ([]*domain.Knowledge, error) {
-	query := `SELECT id, owner_id, title, content, summary, source, source_ref, knowledge_type, tags,
+	query := `SELECT id, owner_id, title, content, summary, source, source_ref, knowledge_type, knowledge_category, tags,
 		related_ids, superseded_by, status, consolidated_from, hit_count, useful_count, last_hit_at,
 		created_at, updated_at FROM knowledge WHERE owner_id = $1 AND embedding IS NULL LIMIT $2`
 	return s.scanMultiple(ctx, query, ownerID, limit)
@@ -415,7 +421,7 @@ func (s *PgStore) scanMultiple(ctx context.Context, query string, args ...any) (
 		k := &domain.Knowledge{}
 		err := rows.Scan(
 			&k.ID, &k.OwnerID, &k.Title, &k.Content, &k.Summary,
-			&k.Source, &k.SourceRef, &k.KnowledgeType,
+			&k.Source, &k.SourceRef, &k.KnowledgeType, &k.KnowledgeCategory,
 			pq.Array(&k.Tags),
 			pq.Array(&k.RelatedIDs),
 			&k.SupersededBy,

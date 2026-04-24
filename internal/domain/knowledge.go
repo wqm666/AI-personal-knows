@@ -12,7 +12,8 @@ type Knowledge struct {
 	Source    string // conversation / document / manual
 	SourceRef string
 
-	KnowledgeType string // pitfall / decision / faq / general
+	KnowledgeType     string // pitfall / decision / faq / general / preference / thinking / lesson / business / architecture / fact
+	KnowledgeCategory string // subjective / objective
 
 	Tags []string
 
@@ -50,4 +51,16 @@ const (
 	TypeDecision = "decision"
 	TypeFAQ      = "faq"
 	TypeGeneral  = "general"
+
+	TypePreference   = "preference"
+	TypeThinking     = "thinking"
+	TypeLesson       = "lesson"
+	TypeBusiness     = "business"
+	TypeArchitecture = "architecture"
+	TypeFact         = "fact"
+)
+
+const (
+	CategorySubjective = "subjective"
+	CategoryObjective  = "objective"
 )

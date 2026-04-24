@@ -66,4 +66,6 @@ const migrationSQL = `
 ALTER TABLE knowledge ADD COLUMN IF NOT EXISTS knowledge_type TEXT DEFAULT 'general';
 CREATE INDEX IF NOT EXISTS idx_knowledge_owner_type ON knowledge(owner_id, knowledge_type);
 ALTER TABLE knowledge ADD COLUMN IF NOT EXISTS superseded_by TEXT DEFAULT '';
+ALTER TABLE knowledge ADD COLUMN IF NOT EXISTS knowledge_category TEXT DEFAULT '';
+CREATE INDEX IF NOT EXISTS idx_knowledge_owner_category ON knowledge(owner_id, knowledge_category);
 `
