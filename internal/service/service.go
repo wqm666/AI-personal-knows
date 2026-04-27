@@ -14,6 +14,10 @@ import (
 	"github.com/personal-know/internal/port"
 )
 
+type Reviewer interface {
+	Review(ctx context.Context, k *domain.Knowledge) (*domain.ReviewResult, error)
+}
+
 type Service struct {
 	store        port.Store
 	orchestrator port.Orchestrator
@@ -22,6 +26,7 @@ type Service struct {
 	maintainer   port.Maintainer
 	idGen        port.IDGenerator
 	llm          port.LLMClient
+	reviewer     Reviewer
 }
 
 func New(
@@ -46,13 +51,20 @@ func (s *Service) SetLLM(llm port.LLMClient) {
 	s.llm = llm
 }
 
+func (s *Service) SetReviewer(r Reviewer) {
+	s.reviewer = r
+}
+
 type SaveResult struct {
-	Saved   bool     `json:"saved"`
-	ID      string   `json:"id"`
-	Title   string   `json:"title"`
-	Tags    []string `json:"tags"`
-	Action  string   `json:"action"`
-	Message string   `json:"message,omitempty"`
+	Saved        bool     `json:"saved"`
+	ID           string   `json:"id"`
+	Title        string   `json:"title"`
+	Tags         []string `json:"tags"`
+	Action       string   `json:"action"`
+	Message      string   `json:"message,omitempty"`
+	ReviewStatus string   `json:"review_status,omitempty"`
+	Confidence   int      `json:"confidence,omitempty"`
+	ReviewReason string   `json:"review_reason,omitempty"`
 }
 
 func (s *Service) Save(ctx context.Context, title, content, source, sourceRef string, tags []string) (*SaveResult, error) {
@@ -61,6 +73,9 @@ func (s *Service) Save(ctx context.Context, title, content, source, sourceRef st
 
 	if content == "" {
 		return nil, fmt.Errorf("content is required")
+	}
+	if len(content) > maxContentSize {
+		return nil, fmt.Errorf("content too large: %d bytes (max %d)", len(content), maxContentSize)
 	}
 	if !utf8.ValidString(content) {
 		content = sanitizeUTF8(content)
@@ -105,18 +120,19 @@ func (s *Service) Save(ctx context.Context, title, content, source, sourceRef st
 				id := s.idGen.Generate()
 				now := time.Now()
 				k := &domain.Knowledge{
-					ID:         id,
-					OwnerID:    ownerID,
-					Title:      title,
-					Content:    content,
-					Source:     source,
-					SourceRef:  sourceRef,
-					Tags:       tags,
-					Embedding:  embedding,
-					RelatedIDs: []string{result.ExistID},
-					Status:     domain.StatusActive,
-					CreatedAt:  now,
-					UpdatedAt:  now,
+					ID:           id,
+					OwnerID:      ownerID,
+					Title:        title,
+					Content:      content,
+					Source:       source,
+					SourceRef:    sourceRef,
+					Tags:         tags,
+					Embedding:    embedding,
+					RelatedIDs:   []string{result.ExistID},
+					Status:       domain.StatusActive,
+					ReviewStatus: domain.ReviewPending,
+					CreatedAt:    now,
+					UpdatedAt:    now,
 				}
 				txErr := s.store.RunInTx(ctx, func(txCtx context.Context) error {
 					if err := s.store.Save(txCtx, k); err != nil {
@@ -128,30 +144,32 @@ func (s *Service) Save(ctx context.Context, title, content, source, sourceRef st
 					return nil, txErr
 				}
 				return &SaveResult{
-					Saved:   true,
-					ID:      id,
-					Title:   title,
-					Tags:    tags,
-					Action:  domain.ActionSupersede,
-					Message: fmt.Sprintf("contradicts existing item %s (score=%.2f), saved as newer version", result.ExistID, result.Score),
+					Saved:        true,
+					ID:           id,
+					Title:        title,
+					Tags:         tags,
+					Action:       domain.ActionSupersede,
+					Message:      fmt.Sprintf("contradicts existing item %s (score=%.2f), saved as newer version — pending review", result.ExistID, result.Score),
+					ReviewStatus: domain.ReviewPending,
 				}, nil
 
 			case domain.ActionRelate:
 				id := s.idGen.Generate()
 				now := time.Now()
 				k := &domain.Knowledge{
-					ID:         id,
-					OwnerID:    ownerID,
-					Title:      title,
-					Content:    content,
-					Source:     source,
-					SourceRef:  sourceRef,
-					Tags:       tags,
-					Embedding:  embedding,
-					RelatedIDs: []string{result.ExistID},
-					Status:     domain.StatusActive,
-					CreatedAt:  now,
-					UpdatedAt:  now,
+					ID:           id,
+					OwnerID:      ownerID,
+					Title:        title,
+					Content:      content,
+					Source:       source,
+					SourceRef:    sourceRef,
+					Tags:         tags,
+					Embedding:    embedding,
+					RelatedIDs:   []string{result.ExistID},
+					Status:       domain.StatusActive,
+					ReviewStatus: domain.ReviewPending,
+					CreatedAt:    now,
+					UpdatedAt:    now,
 				}
 				txErr := s.store.RunInTx(ctx, func(txCtx context.Context) error {
 					if err := s.store.Save(txCtx, k); err != nil {
@@ -161,25 +179,27 @@ func (s *Service) Save(ctx context.Context, title, content, source, sourceRef st
 					if err != nil {
 						return err
 					}
-					if existing != nil {
-						relIDs := make([]string, len(existing.RelatedIDs), len(existing.RelatedIDs)+1)
-						copy(relIDs, existing.RelatedIDs)
-						relIDs = append(relIDs, id)
-						return s.store.UpdateRelatedIDs(txCtx, ownerID, result.ExistID, relIDs)
+					if existing == nil {
+						slog.Warn("related item disappeared during transaction", "exist_id", result.ExistID)
+						return nil
 					}
-					return nil
+					relIDs := make([]string, len(existing.RelatedIDs), len(existing.RelatedIDs)+1)
+					copy(relIDs, existing.RelatedIDs)
+					relIDs = append(relIDs, id)
+					return s.store.UpdateRelatedIDs(txCtx, ownerID, result.ExistID, relIDs)
 				})
 				if txErr != nil {
 					return nil, txErr
 				}
 
 				return &SaveResult{
-					Saved:   true,
-					ID:      id,
-					Title:   title,
-					Tags:    tags,
-					Action:  domain.ActionRelate,
-					Message: fmt.Sprintf("saved and linked to related item %s (score=%.2f)", result.ExistID, result.Score),
+					Saved:        true,
+					ID:           id,
+					Title:        title,
+					Tags:         tags,
+					Action:       domain.ActionRelate,
+					Message:      fmt.Sprintf("saved and linked to related item %s (score=%.2f) — pending review", result.ExistID, result.Score),
+					ReviewStatus: domain.ReviewPending,
 				}, nil
 			}
 		}
@@ -188,17 +208,18 @@ func (s *Service) Save(ctx context.Context, title, content, source, sourceRef st
 	id := s.idGen.Generate()
 	now := time.Now()
 	k := &domain.Knowledge{
-		ID:        id,
-		OwnerID:   ownerID,
-		Title:     title,
-		Content:   content,
-		Source:    source,
-		SourceRef: sourceRef,
-		Tags:      tags,
-		Embedding: embedding,
-		Status:    domain.StatusActive,
-		CreatedAt: now,
-		UpdatedAt: now,
+		ID:           id,
+		OwnerID:      ownerID,
+		Title:        title,
+		Content:      content,
+		Source:       source,
+		SourceRef:    sourceRef,
+		Tags:         tags,
+		Embedding:    embedding,
+		Status:       domain.StatusActive,
+		ReviewStatus: domain.ReviewPending,
+		CreatedAt:    now,
+		UpdatedAt:    now,
 	}
 
 	if err := s.store.Save(ctx, k); err != nil {
@@ -206,21 +227,23 @@ func (s *Service) Save(ctx context.Context, title, content, source, sourceRef st
 	}
 
 	return &SaveResult{
-		Saved:  true,
-		ID:     id,
-		Title:  title,
-		Tags:   tags,
-		Action: domain.ActionNew,
+		Saved:        true,
+		ID:           id,
+		Title:        title,
+		Tags:         tags,
+		Action:       domain.ActionNew,
+		ReviewStatus: domain.ReviewPending,
 	}, nil
 }
 
 type SearchResult struct {
-	Items      []domain.SearchHit `json:"items"`
-	Total      int                `json:"total"`
-	EntryCount int                `json:"entry_count"`
+	Items       []domain.SearchHit `json:"items"`
+	Total       int                `json:"total"`
+	EntryCount  int                `json:"entry_count"`
+	SearchLogID string             `json:"search_log_id,omitempty"`
 }
 
-func (s *Service) Search(ctx context.Context, query string, limit int) (*SearchResult, error) {
+func (s *Service) Search(ctx context.Context, query string, limit int, source string) (*SearchResult, error) {
 	identity := port.IdentityFromContext(ctx)
 
 	if limit <= 0 {
@@ -313,9 +336,24 @@ func (s *Service) Search(ctx context.Context, query string, limit int) (*SearchR
 	// Step 4: Annotate conflicts and sort with newest-first for contradictions
 	expanded = annotateConflicts(expanded)
 
+	for i := range expanded {
+		expanded[i].Confidence = expanded[i].Item.Confidence
+	}
+
+	// Collect result IDs for search log
+	resultIDs := make([]string, 0, len(expanded))
+	for _, h := range expanded {
+		resultIDs = append(resultIDs, h.Item.ID)
+	}
+	searchLogID := s.idGen.Generate()
+	logSource := source
+	if logSource == "" {
+		logSource = domain.SearchSourceAPI
+	}
+
 	// Async: increment hit counts + save search log
 	go func() {
-		bgCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		bgCtx, cancel := context.WithTimeout(context.Background(), asyncTimeout)
 		defer cancel()
 		for _, h := range expanded {
 			if err := s.store.IncrementHitCount(bgCtx, identity.OwnerID, h.Item.ID); err != nil {
@@ -323,10 +361,12 @@ func (s *Service) Search(ctx context.Context, query string, limit int) (*SearchR
 			}
 		}
 		if err := s.store.SaveSearchLog(bgCtx, &domain.SearchLog{
-			ID:          s.idGen.Generate(),
+			ID:          searchLogID,
 			OwnerID:     identity.OwnerID,
 			Query:       query,
+			Source:      logSource,
 			ResultCount: entryCount,
+			ResultIDs:   resultIDs,
 			CreatedAt:   time.Now(),
 		}); err != nil {
 			slog.Warn("async search log save failed", "error", err)
@@ -334,9 +374,10 @@ func (s *Service) Search(ctx context.Context, query string, limit int) (*SearchR
 	}()
 
 	return &SearchResult{
-		Items:      expanded,
-		Total:      len(expanded),
-		EntryCount: entryCount,
+		Items:       expanded,
+		Total:       len(expanded),
+		EntryCount:  entryCount,
+		SearchLogID: searchLogID,
 	}, nil
 }
 
@@ -403,13 +444,19 @@ func (s *Service) Import(ctx context.Context, fileContent, fileName, chunkMode s
 	}
 
 	count := 0
+	var lastErr error
 	for _, c := range chunks {
 		_, err := s.Save(ctx, c.title, c.content, domain.SourceDocument, fileName, c.tags)
 		if err != nil {
 			slog.Warn("import chunk failed", "title", c.title, "error", err)
+			lastErr = err
 			continue
 		}
 		count++
+	}
+
+	if count == 0 && len(chunks) > 0 {
+		return nil, fmt.Errorf("all %d chunks failed to import, last error: %w", len(chunks), lastErr)
 	}
 
 	return &ImportResult{
@@ -644,7 +691,7 @@ func (s *Service) AutoCapture(ctx context.Context, conversation, projectCtx stri
 	var allItems []SaveResult
 
 	for _, ev := range evals {
-		if ev.Score < 5 || ev.Category == "none" {
+		if ev.Score < evalScoreThreshold || ev.Category == "none" {
 			stats.Discarded++
 			continue
 		}
@@ -764,8 +811,8 @@ Score (0-10):
 	for i, seg := range segments {
 		sb.WriteString(fmt.Sprintf("[%d]: ", i))
 		r := []rune(seg)
-		if len(r) > 1500 {
-			sb.WriteString(string(r[:1500]))
+		if len(r) > segmentTruncateLen {
+			sb.WriteString(string(r[:segmentTruncateLen]))
 			sb.WriteString("...")
 		} else {
 			sb.WriteString(seg)
@@ -1001,6 +1048,138 @@ func (s *Service) autoCaptureWithoutLLM(ctx context.Context, conversation, proje
 	}, nil
 }
 
+// --- Human review: list / approve / reject ---
+
+type PendingItem struct {
+	ID                string               `json:"id"`
+	Title             string               `json:"title"`
+	Content           string               `json:"content"`
+	KnowledgeType     string               `json:"knowledge_type"`
+	KnowledgeCategory string               `json:"knowledge_category"`
+	Tags              []string             `json:"tags"`
+	Source            string               `json:"source"`
+	CreatedAt         string               `json:"created_at"`
+	LLMSuggestion     *domain.ReviewResult `json:"llm_suggestion,omitempty"`
+}
+
+type ListPendingResult struct {
+	Items []PendingItem `json:"items"`
+	Total int           `json:"total"`
+}
+
+func (s *Service) ListPending(ctx context.Context, limit int) (*ListPendingResult, error) {
+	identity := port.IdentityFromContext(ctx)
+
+	if limit <= 0 {
+		limit = defaultPendingLimit
+	}
+
+	pending, err := s.store.ListByReviewStatus(ctx, identity.OwnerID, domain.ReviewPending, 0, limit)
+	if err != nil {
+		return nil, err
+	}
+
+	total, _ := s.store.CountByReviewStatus(ctx, identity.OwnerID, domain.ReviewPending)
+
+	items := make([]PendingItem, 0, len(pending))
+	for _, k := range pending {
+		item := PendingItem{
+			ID:                k.ID,
+			Title:             k.Title,
+			Content:           k.Content,
+			KnowledgeType:     k.KnowledgeType,
+			KnowledgeCategory: k.KnowledgeCategory,
+			Tags:              k.Tags,
+			Source:            k.Source,
+			CreatedAt:         k.CreatedAt.Format(time.RFC3339),
+		}
+
+		if k.ReviewReason != "" {
+			item.LLMSuggestion = &domain.ReviewResult{
+				Status:     k.ReviewStatus,
+				Confidence: k.Confidence,
+				Reason:     k.ReviewReason,
+			}
+		}
+
+		items = append(items, item)
+	}
+
+	return &ListPendingResult{
+		Items: items,
+		Total: total,
+	}, nil
+}
+
+func (s *Service) SuggestReview(ctx context.Context, id string) (*domain.ReviewResult, error) {
+	identity := port.IdentityFromContext(ctx)
+	if s.reviewer == nil {
+		return nil, fmt.Errorf("reviewer not configured")
+	}
+
+	k, err := s.store.Get(ctx, identity.OwnerID, id)
+	if err != nil {
+		return nil, err
+	}
+	if k == nil {
+		return nil, fmt.Errorf("knowledge item not found")
+	}
+
+	suggestion, err := s.reviewer.Review(ctx, k)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := s.store.UpdateReviewStatus(ctx, identity.OwnerID, id, domain.ReviewPending, suggestion.Confidence, suggestion.Reason); err != nil {
+		slog.Warn("failed to persist LLM suggestion", "id", id, "error", err)
+	}
+
+	return suggestion, nil
+}
+
+func (s *Service) SetReviewStatus(ctx context.Context, id string, status string, reason string) error {
+	identity := port.IdentityFromContext(ctx)
+
+	k, err := s.store.Get(ctx, identity.OwnerID, id)
+	if err != nil {
+		return err
+	}
+	if k == nil {
+		return fmt.Errorf("knowledge item not found")
+	}
+
+	valid := map[string]bool{
+		domain.ReviewPending:       true,
+		domain.ReviewApproved:      true,
+		domain.ReviewRejected:      true,
+		domain.ReviewNeedsRevision: true,
+	}
+	if !valid[status] {
+		return fmt.Errorf("invalid review status: %s", status)
+	}
+
+	confidence := 0
+	if status == domain.ReviewApproved {
+		confidence = 100
+	}
+	if reason == "" {
+		reason = "manually set to " + status
+	}
+	return s.store.UpdateReviewStatus(ctx, identity.OwnerID, id, status, confidence, reason)
+}
+
+func (s *Service) ApproveKnowledge(ctx context.Context, id string, reason string) error {
+	return s.SetReviewStatus(ctx, id, domain.ReviewApproved, reason)
+}
+
+func (s *Service) RejectKnowledge(ctx context.Context, id string, reason string) error {
+	return s.SetReviewStatus(ctx, id, domain.ReviewRejected, reason)
+}
+
+func (s *Service) RequestRevision(ctx context.Context, id string, reason string) error {
+	return s.SetReviewStatus(ctx, id, domain.ReviewNeedsRevision, reason)
+}
+
 func (s *Service) Feedback(ctx context.Context, itemID string) error {
 	identity := port.IdentityFromContext(ctx)
 	return s.store.IncrementUsefulCount(ctx, identity.OwnerID, itemID)
@@ -1073,6 +1252,50 @@ func (s *Service) SearchLogStats(ctx context.Context) (*domain.SearchLogStats, e
 	return s.store.SearchLogStats(ctx, identity.OwnerID)
 }
 
+func (s *Service) KnowledgeHitRanking(ctx context.Context, limit int) ([]domain.KnowledgeHitRank, error) {
+	identity := port.IdentityFromContext(ctx)
+	return s.store.KnowledgeHitRanking(ctx, identity.OwnerID, limit)
+}
+
+func (s *Service) ListSearchLogsDetailed(ctx context.Context, offset, limit int, sourceFilter string) ([]domain.SearchLogDetail, int, error) {
+	identity := port.IdentityFromContext(ctx)
+	if limit <= 0 {
+		limit = defaultSearchLogsLimit
+	}
+	if offset < 0 {
+		offset = 0
+	}
+
+	total, err := s.store.CountSearchLogs(ctx, identity.OwnerID, sourceFilter)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	logs, err := s.store.ListSearchLogsFiltered(ctx, identity.OwnerID, sourceFilter, offset, limit)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	details := make([]domain.SearchLogDetail, 0, len(logs))
+	for _, l := range logs {
+		details = append(details, domain.SearchLogDetail{
+			ID:             l.ID,
+			Query:          l.Query,
+			Source:         l.Source,
+			ResultCount:    l.ResultCount,
+			ResultIDs:      l.ResultIDs,
+			FeedbackBadIDs: l.FeedbackBadIDs,
+			CreatedAt:      l.CreatedAt.Format(time.RFC3339),
+		})
+	}
+	return details, total, nil
+}
+
+func (s *Service) MarkBadRecall(ctx context.Context, searchLogID, badItemID string) error {
+	identity := port.IdentityFromContext(ctx)
+	return s.store.MarkSearchBadFeedback(ctx, identity.OwnerID, searchLogID, badItemID)
+}
+
 // GetKnowledge retrieves a single knowledge item.
 func (s *Service) GetKnowledge(ctx context.Context, id string) (*domain.Knowledge, error) {
 	identity := port.IdentityFromContext(ctx)
@@ -1119,16 +1342,22 @@ func (s *Service) Stats(ctx context.Context) (map[string]any, error) {
 		return nil, err
 	}
 
-	// Tag distribution
-	items, err := s.store.ListByStatus(ctx, identity.OwnerID, domain.StatusActive, 0, maxTagScanItems)
+	pending, err := s.store.CountByReviewStatus(ctx, identity.OwnerID, domain.ReviewPending)
 	if err != nil {
 		return nil, err
 	}
-	tagCounts := make(map[string]int)
-	for _, item := range items {
-		for _, tag := range item.Tags {
-			tagCounts[tag]++
-		}
+	approved, err := s.store.CountByReviewStatus(ctx, identity.OwnerID, domain.ReviewApproved)
+	if err != nil {
+		return nil, err
+	}
+	rejected, err := s.store.CountByReviewStatus(ctx, identity.OwnerID, domain.ReviewRejected)
+	if err != nil {
+		return nil, err
+	}
+
+	tagCounts, err := s.store.TagStats(ctx, identity.OwnerID, domain.StatusActive)
+	if err != nil {
+		return nil, err
 	}
 
 	return map[string]any{
@@ -1136,7 +1365,12 @@ func (s *Service) Stats(ctx context.Context) (map[string]any, error) {
 		"active":       active,
 		"synthesis":    synthesis,
 		"consolidated": consolidated,
-		"tags":         tagCounts,
+		"review": map[string]int{
+			"pending":  pending,
+			"approved": approved,
+			"rejected": rejected,
+		},
+		"tags": tagCounts,
 	}, nil
 }
 
@@ -1152,7 +1386,7 @@ func (s *Service) BackfillEmbeddings(ctx context.Context) {
 	}
 
 	for _, ownerID := range ownerIDs {
-		items, err := s.store.List(ctx, ownerID, 0, maxBackfillItems)
+		items, err := s.store.ListWithoutEmbedding(ctx, ownerID, maxBackfillItems)
 		if err != nil {
 			slog.Error("backfill: list failed", "owner", ownerID, "error", err)
 			continue
@@ -1160,9 +1394,6 @@ func (s *Service) BackfillEmbeddings(ctx context.Context) {
 
 		count := 0
 		for _, item := range items {
-			if len(item.Embedding) > 0 {
-				continue
-			}
 			emb, err := s.embedder.Embed(ctx, item.Title+" "+item.Content)
 			if err != nil {
 				slog.Warn("backfill: embed failed", "id", item.ID, "error", err)
@@ -1219,8 +1450,14 @@ const (
 	expansionScoreDecay = 0.1
 	sourceFragmentScore = 0.3
 
-	maxTagScanItems  = 10000
 	maxBackfillItems = 1000
+	maxContentSize   = 1 << 20 // 1 MB
+
+	defaultPendingLimit    = 20
+	defaultSearchLogsLimit = 50
+	asyncTimeout           = 10 * time.Second
+	evalScoreThreshold     = 5
+	segmentTruncateLen     = 1500
 )
 
 func splitDocument(content, fileName string) []chunk {

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/personal-know/internal/port"
@@ -19,12 +20,16 @@ type Client struct {
 	client  *http.Client
 }
 
-func New(baseURL, apiKey, model string) *Client {
+func New(baseURL, apiKey, model string, timeoutSec ...int) *Client {
+	timeout := 60 * time.Second
+	if len(timeoutSec) > 0 && timeoutSec[0] > 0 {
+		timeout = time.Duration(timeoutSec[0]) * time.Second
+	}
 	return &Client{
 		baseURL: baseURL,
 		apiKey:  apiKey,
 		model:   model,
-		client:  &http.Client{Timeout: 60 * time.Second},
+		client:  &http.Client{Timeout: timeout},
 	}
 }
 
@@ -55,7 +60,7 @@ func (c *Client) doChat(ctx context.Context, messages []port.LLMMessage, jsonMod
 		return "", err
 	}
 
-	url := c.baseURL + "/v1/chat/completions"
+	url := strings.TrimRight(c.baseURL, "/") + "/v1/chat/completions"
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(jsonBody))
 	if err != nil {
 		return "", err

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -18,17 +19,21 @@ type Embedder struct {
 	client  *http.Client
 }
 
-func New(baseURL, apiKey, model string) *Embedder {
+func New(baseURL, apiKey, model string, timeoutSec ...int) *Embedder {
 	dim := 1536
 	if model == "text-embedding-3-large" {
 		dim = 3072
+	}
+	timeout := 30 * time.Second
+	if len(timeoutSec) > 0 && timeoutSec[0] > 0 {
+		timeout = time.Duration(timeoutSec[0]) * time.Second
 	}
 	return &Embedder{
 		baseURL: baseURL,
 		apiKey:  apiKey,
 		model:   model,
 		dim:     dim,
-		client:  &http.Client{Timeout: 30 * time.Second},
+		client:  &http.Client{Timeout: timeout},
 	}
 }
 
@@ -44,7 +49,7 @@ func (e *Embedder) Embed(ctx context.Context, text string) ([]float64, error) {
 		return nil, err
 	}
 
-	url := e.baseURL + "/v1/embeddings"
+	url := strings.TrimRight(e.baseURL, "/") + "/v1/embeddings"
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(jsonBody))
 	if err != nil {
 		return nil, err

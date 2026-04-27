@@ -14,27 +14,37 @@ import (
 )
 
 const (
-	minClusterSize         = 3
-	consolidationScanLimit = 500
-	synthesisCheckLimit    = 100
-	synthesisOverlapRatio  = 0.8
+	defaultMinClusterSize         = 3
+	defaultConsolidationScanLimit = 500
+	synthesisCheckLimit           = 100
+	synthesisOverlapRatio         = 0.8
 )
 
 type Consolidation struct {
-	pg    *pgstore.PgStore
-	llm   port.LLMClient
-	idGen port.IDGenerator
+	pg             *pgstore.PgStore
+	llm            port.LLMClient
+	idGen          port.IDGenerator
+	minClusterSize int
+	scanLimit      int
 }
 
-func NewConsolidation(pg *pgstore.PgStore, llm port.LLMClient, idGen port.IDGenerator) *Consolidation {
-	return &Consolidation{pg: pg, llm: llm, idGen: idGen}
+func NewConsolidation(pg *pgstore.PgStore, llm port.LLMClient, idGen port.IDGenerator, minCluster, scanLimit int) *Consolidation {
+	if minCluster <= 0 {
+		minCluster = defaultMinClusterSize
+	}
+	if scanLimit <= 0 {
+		scanLimit = defaultConsolidationScanLimit
+	}
+	return &Consolidation{pg: pg, llm: llm, idGen: idGen, minClusterSize: minCluster, scanLimit: scanLimit}
 }
 
-func (t *Consolidation) Name() string        { return "consolidation" }
-func (t *Consolidation) Description() string { return "Create index nodes for related knowledge clusters" }
+func (t *Consolidation) Name() string { return "consolidation" }
+func (t *Consolidation) Description() string {
+	return "Create index nodes for related knowledge clusters"
+}
 
 func (t *Consolidation) Run(ctx context.Context, ownerID string) (*domain.MaintainResult, error) {
-	items, err := t.pg.ListByStatus(ctx, ownerID, domain.StatusActive, 0, consolidationScanLimit)
+	items, err := t.pg.ListByStatus(ctx, ownerID, domain.StatusActive, 0, t.scanLimit)
 	if err != nil {
 		return nil, err
 	}
@@ -43,7 +53,7 @@ func (t *Consolidation) Run(ctx context.Context, ownerID string) (*domain.Mainta
 	affected := 0
 
 	for _, cluster := range clusters {
-		if len(cluster) < minClusterSize {
+		if len(cluster) < t.minClusterSize {
 			continue
 		}
 
@@ -90,7 +100,7 @@ func (t *Consolidation) findClusters(items []*domain.Knowledge) [][]*domain.Know
 	}
 
 	for _, item := range items {
-		if visited[item.ID] || len(item.RelatedIDs) < minClusterSize-1 {
+		if visited[item.ID] || len(item.RelatedIDs) < t.minClusterSize-1 || item.ReviewStatus != domain.ReviewApproved {
 			continue
 		}
 
@@ -104,7 +114,7 @@ func (t *Consolidation) findClusters(items []*domain.Knowledge) [][]*domain.Know
 			}
 		}
 
-		if len(cluster) >= minClusterSize {
+		if len(cluster) >= t.minClusterSize {
 			clusters = append(clusters, cluster)
 		}
 	}
@@ -200,6 +210,7 @@ Return ONLY valid JSON, no markdown.`, len(cluster), content)
 		Source:           "consolidation",
 		Tags:             tags,
 		Status:           domain.StatusSynthesis,
+		ReviewStatus:     domain.ReviewApproved,
 		ConsolidatedFrom: ids,
 		RelatedIDs:       ids,
 		CreatedAt:        now,

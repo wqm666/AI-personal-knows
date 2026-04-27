@@ -13,9 +13,10 @@ config.json
 # Dependencies
 vendor/
 
-# IDE
+# IDE & Claude Code
 .idea/
 .vscode/
+.claude/
 *.swp
 *.swo
 *~

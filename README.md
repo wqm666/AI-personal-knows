@@ -46,28 +46,58 @@ It's not just a note app. It's a **second brain** that:
 
 ## Key Features
 
-### For Knowledge Capture
+### Knowledge Quality System (Git-like Review)
+
+Knowledge follows a **git-like branch model** — new items enter as `pending` (staging area) and must pass human review to become `approved` (main branch). Only approved knowledge is returned by search.
+
+- **Human Review** — Every knowledge item requires manual approval before it becomes searchable
+- **LLM-Assisted Suggestions** — LLM provides quality recommendations, but humans make the final decision
+- **Confidence Scoring** — Each approved item carries a 0-100 confidence score
+- **Web UI Review Panel** — Table view with status tabs (All / Pending / Approved / Rejected), inline approve/reject/edit
+
+### Claude Code Skill System
+
+4 built-in skills that teach AI agents how to use the knowledge base effectively:
+
+| Skill | Trigger | What It Does |
+|-------|---------|-------------|
+| `/know-save` | "remember this", "save to knowledge base" | Extract and save knowledge from conversation |
+| `/know-search` | **Auto-triggers** on decision/rule/architecture questions | Search knowledge base before answering |
+| `/know-capture` | "extract knowledge from this conversation" | Batch-extract multiple knowledge items |
+| `/know-review` | "review pending knowledge" | Interactive review queue with approve/reject |
+
+**`/know-search` proactively triggers** — when users ask about past decisions, business rules, or architecture choices, the AI automatically searches the knowledge base before answering.
+
+### MCP Observability
+
+- **MCP Call Logs** — Track every `note_search` call from AI agents, with source filtering (MCP vs Web)
+- **Knowledge Hit Ranking** — See which knowledge items are most frequently recalled
+- **Bad Recall Marking** — Flag incorrect search results to improve knowledge quality over time
+- **Accuracy Metrics** — Per-item accuracy rate based on feedback
+
+### Knowledge Capture
 - **Auto-Extraction from Conversations** — LLM detects valuable signals (errors, pitfalls, decisions) and extracts structured knowledge
 - **Document Import** — Import Markdown/text files with auto-chunking by headings
 - **Manual Input** — Quick-save knowledge via Web UI or API
 - **MCP Integration** — AI agents directly save learnings through `note_save` and `note_capture`
 
-### For Knowledge Retrieval
+### Knowledge Retrieval
 - **Multi-Strategy Search** — Vector similarity + Full-text search + Keyword matching, running in parallel
 - **Knowledge Graph Expansion** — BFS traversal along `related_ids` surfaces connected knowledge you didn't know you had
 - **Smart Ranking** — Feedback-driven scoring: knowledge marked "useful" ranks higher
 
-### For Knowledge Evolution
+### Knowledge Evolution
 - **Smart Deduplication** — Vector-based 3-tier strategy: reinforce existing / relate similar / create new
 - **Auto Link Discovery** — Background task finds and connects semantically related knowledge
 - **Knowledge Consolidation** — LLM merges 3+ related fragments into synthesis nodes
 - **Tag Normalization** — LLM unifies synonymous tags (e.g., "golang" → "Go")
 - **Natural Decay** — Unused knowledge gracefully fades after 90 days
 
-### For Integration
-- **7 MCP Tools** — Full integration with Claude Code, Cursor, and any MCP-compatible AI
-- **REST API** — Complete CRUD + search + analytics endpoints
-- **Built-in Web UI** — Browse, search, and manage knowledge without leaving your browser
+### Integration
+- **8 MCP Tools** — Full integration with Claude Code, Cursor, and any MCP-compatible AI
+- **4 Claude Code Skills** — Pre-built skills that boost MCP adoption
+- **REST API** — Complete CRUD + search + review + monitoring endpoints
+- **Built-in Web UI** — Knowledge review, monitoring dashboard, tag cloud, maintenance panel
 - **Docker One-Click Deploy** — Up and running in under 2 minutes
 
 ## Architecture
@@ -107,11 +137,12 @@ It's not just a note app. It's a **second brain** that:
 
 | Tool | Description |
 |------|-------------|
-| `note_search` | Semantic search across the knowledge base |
-| `note_save` | Save knowledge with auto-dedup and linking |
-| `note_capture` | Extract knowledge from conversation sessions via LLM |
+| `note_search` | Semantic search across the knowledge base (only returns approved items) |
+| `note_save` | Save knowledge with auto-dedup and linking (enters as pending) |
+| `note_auto_capture` | Extract knowledge from conversation sessions via LLM |
 | `note_import` | Import documents with auto-chunking |
 | `note_update` | Update existing knowledge items |
+| `note_review` | Review pending items: list / approve / reject / revision |
 | `note_feedback` | Mark knowledge as useful (affects ranking and decay) |
 | `note_maintain` | Trigger maintenance: link discovery, consolidation, decay, tag normalization |
 
@@ -177,23 +208,23 @@ Once connected, your AI assistant can:
 ### Knowledge Lifecycle
 
 ```
- ┌──────────┐    ┌──────────┐    ┌──────────┐    ┌──────────┐
- │ Capture  │───▶│  Embed   │───▶│  Dedup   │───▶│  Store   │
- │          │    │          │    │          │    │          │
- │ • chat   │    │ OpenAI   │    │ ≥0.95 ↻  │    │ pgvector │
- │ • doc    │    │ embedding│    │ 0.75 🔗  │    │ + meta   │
- │ • manual │    │          │    │ <0.75 ✚  │    │          │
- └──────────┘    └──────────┘    └──────────┘    └──────────┘
-                                                       │
-                        ┌──────────────────────────────┘
+ ┌──────────┐    ┌──────────┐    ┌──────────┐    ┌──────────┐    ┌──────────┐
+ │ Capture  │───▶│  Embed   │───▶│  Dedup   │───▶│ Pending  │───▶│ Approved │
+ │          │    │          │    │          │    │ (staging) │    │  (main)  │
+ │ • chat   │    │ OpenAI   │    │ ≥0.95 ↻  │    │          │    │          │
+ │ • doc    │    │ embedding│    │ 0.75 🔗  │    │ Human    │    │ Searchable
+ │ • manual │    │          │    │ <0.75 ✚  │    │ Review   │    │ by MCP   │
+ └──────────┘    └──────────┘    └──────────┘    └──────────┘    └──────────┘
+                                                                       │
+                        ┌──────────────────────────────────────────────┘
                         ▼
- ┌──────────┐    ┌──────────┐    ┌──────────┐
- │  Search  │───▶│  Expand  │───▶│ Maintain │
- │          │    │          │    │          │
- │ 3-way    │    │ BFS graph│    │ • links  │
- │ parallel │    │ traversal│    │ • merge  │
- │          │    │          │    │ • decay  │
- └──────────┘    └──────────┘    └──────────┘
+ ┌──────────┐    ┌──────────┐    ┌──────────┐    ┌──────────┐
+ │  Search  │───▶│  Expand  │───▶│ Monitor  │───▶│ Maintain │
+ │          │    │          │    │          │    │          │
+ │ 3-way    │    │ BFS graph│    │ MCP logs │    │ • links  │
+ │ parallel │    │ traversal│    │ accuracy │    │ • merge  │
+ │          │    │          │    │ feedback │    │ • decay  │
+ └──────────┘    └──────────┘    └──────────┘    └──────────┘
 ```
 
 ### Multi-Strategy Search
@@ -269,17 +300,21 @@ All fields can be overridden:
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | GET | `/api/knowledge` | List knowledge (paginated) |
-| POST | `/api/knowledge` | Create knowledge item |
+| POST | `/api/knowledge` | Create knowledge item (enters as pending) |
 | GET | `/api/knowledge/:id` | Get single item |
 | PUT | `/api/knowledge/:id` | Update item |
 | DELETE | `/api/knowledge/:id` | Delete item |
-| GET/POST | `/api/search` | Search knowledge base |
+| GET/POST | `/api/search` | Search knowledge base (approved items only) |
+| GET/POST | `/api/review` | List pending / approve / reject / revision |
 | POST | `/api/import` | Import document |
 | POST | `/api/capture` | Capture session knowledge |
 | POST | `/api/feedback` | Record useful feedback |
 | GET/POST | `/api/maintain` | List or run maintenance tasks |
-| GET | `/api/stats` | Knowledge base statistics |
+| GET | `/api/stats` | Knowledge base statistics (incl. review counts) |
 | GET | `/api/search_log` | Search query analytics |
+| GET | `/api/monitor/ranking` | Knowledge hit ranking with accuracy |
+| GET | `/api/monitor/logs` | MCP call logs (filterable by source) |
+| POST | `/api/monitor/bad_recall` | Mark a search result as incorrect |
 
 ## Tech Stack
 
@@ -298,19 +333,25 @@ All fields can be overridden:
 .
 ├── cmd/server/            # Entry point & dependency wiring
 ├── internal/
-│   ├── domain/            # Domain models (Knowledge, SearchHit, etc.)
+│   ├── domain/            # Domain models (Knowledge, SearchHit, ReviewResult, etc.)
 │   ├── port/              # Interface definitions (Store, Retriever, Embedder, etc.)
 │   ├── service/           # Business logic orchestration
 │   └── adapter/
-│       ├── api/           # REST API router
+│       ├── api/           # REST API router (incl. review & monitoring)
 │       ├── transport/     # MCP server & tool handlers
 │       ├── store/         # PostgreSQL + pgvector implementation
 │       ├── retriever/     # Vector, FTS, Keyword + orchestrator
+│       ├── reviewer/      # LLM-assisted review suggestions
 │       ├── embedder/      # OpenAI-compatible embedding client
 │       ├── llm/           # OpenAI-compatible chat client
 │       ├── dedup/         # Vector similarity deduplication
 │       ├── maintain/      # Link discovery, consolidation, decay, tags
 │       └── identity/      # Owner identity provider
+├── skills/                # Claude Code skill definitions
+│   ├── know-save/         # Save knowledge from conversation
+│   ├── know-search/       # Search knowledge base (auto-triggers)
+│   ├── know-capture/      # Batch extract knowledge from dialogue
+│   └── know-review/       # Interactive review queue
 ├── web/                   # Embedded static web UI
 ├── config.json.example
 ├── docker-compose.yml
@@ -326,6 +367,9 @@ All fields can be overridden:
 - [x] Knowledge graph with BFS expansion
 - [x] Background maintenance (link discovery, consolidation, decay, tag clustering)
 - [x] Built-in Web UI
+- [x] **Knowledge Quality System** — Git-like review flow (pending → approved → searchable)
+- [x] **Claude Code Skills** — 4 skills to boost MCP adoption (`/know-save`, `/know-search`, `/know-capture`, `/know-review`)
+- [x] **MCP Observability** — Call logs, hit ranking, bad recall marking, accuracy metrics
 - [ ] Multi-user support with authentication
 - [ ] Browser extension for one-click knowledge capture
 - [ ] Mobile app (iOS / Android)

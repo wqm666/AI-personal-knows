@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/mark3labs/mcp-go/mcp"
+	"github.com/personal-know/internal/domain"
 	"github.com/personal-know/internal/port"
 	"github.com/personal-know/internal/service"
 )
@@ -128,7 +129,7 @@ func newSearchHandler(svc *service.Service, identity port.IdentityProvider) func
 			return errorResult("query is required"), nil
 		}
 
-		result, err := svc.Search(ctx, query, limit)
+		result, err := svc.Search(ctx, query, limit, domain.SearchSourceMCP)
 		if err != nil {
 			return errorResult(err.Error()), nil
 		}
@@ -204,6 +205,58 @@ func newMaintainHandler(svc *service.Service, identity port.IdentityProvider) fu
 			"results":         results,
 			"available_tasks": svc.ListMaintainTasks(),
 		})
+	}
+}
+
+func newReviewHandler(svc *service.Service, identity port.IdentityProvider) func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		ctx, errResult := mustIdentity(ctx, identity)
+		if errResult != nil {
+			return errResult, nil
+		}
+		args := req.GetArguments()
+
+		action, _ := args["action"].(string)
+		id, _ := args["id"].(string)
+		reason, _ := args["reason"].(string)
+		limitF, _ := args["limit"].(float64)
+		limit := int(limitF)
+
+		switch action {
+		case "approve":
+			if id == "" {
+				return errorResult("id is required for approve"), nil
+			}
+			if err := svc.ApproveKnowledge(ctx, id, reason); err != nil {
+				return errorResult(err.Error()), nil
+			}
+			return jsonResult(map[string]any{"approved": true, "id": id})
+
+		case "reject":
+			if id == "" {
+				return errorResult("id is required for reject"), nil
+			}
+			if err := svc.RejectKnowledge(ctx, id, reason); err != nil {
+				return errorResult(err.Error()), nil
+			}
+			return jsonResult(map[string]any{"rejected": true, "id": id})
+
+		case "revision":
+			if id == "" {
+				return errorResult("id is required for revision"), nil
+			}
+			if err := svc.RequestRevision(ctx, id, reason); err != nil {
+				return errorResult(err.Error()), nil
+			}
+			return jsonResult(map[string]any{"revision_requested": true, "id": id})
+
+		default:
+			result, err := svc.ListPending(ctx, limit)
+			if err != nil {
+				return errorResult(err.Error()), nil
+			}
+			return jsonResultWithHint(result, "Review each item and use note_review with action=approve/reject/revision to make a decision. Only approved items will be searchable.")
+		}
 	}
 }
 

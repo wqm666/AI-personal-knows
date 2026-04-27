@@ -6,10 +6,13 @@
   },
   "store": {
     "type": "postgres",
-    "dsn": "postgres://personalknow:your-db-password@postgres:5432/personalknow?sslmode=disable"
+    "dsn": "postgres://personalknow:your-db-password@postgres:5432/personalknow?sslmode=disable",
+    "max_open_conns": 20,
+    "max_idle_conns": 5,
+    "conn_max_lifetime_seconds": 300
   },
   "retrievers": [
-    { "type": "keyword", "enabled": true, "params": { "fetch_limit": 500 } },
+    { "type": "keyword", "enabled": true, "params": { "fetch_limit": 20 } },
     { "type": "fts", "enabled": true },
     { "type": "vector", "enabled": true, "params": { "score_threshold": 0.7 } }
   ],
@@ -17,6 +20,21 @@
     "base_url": "https://api.openai.com",
     "api_key": "your-api-key-here",
     "chat_model": "gpt-4o-mini",
-    "embedding_model": "text-embedding-3-small"
+    "embedding_model": "text-embedding-3-small",
+    "chat_timeout_seconds": 60,
+    "embed_timeout_seconds": 30
+  },
+  "dedup": {
+    "reinforce_threshold": 0.95,
+    "relate_threshold": 0.75
+  },
+  "maintain": {
+    "link_threshold": 0.75,
+    "link_scan_limit": 500,
+    "consolidation_min_cluster": 3,
+    "consolidation_scan_limit": 500,
+    "decay_days": 90,
+    "decay_scan_limit": 1000,
+    "tag_cluster_scan_limit": 1000
   }
 }

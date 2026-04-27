@@ -83,6 +83,53 @@ textarea { resize: vertical; min-height: 100px; }
 .toast.success { background: var(--success); }
 .toast.error { background: var(--danger); }
 
+.review-item { padding: 16px; border-bottom: 1px solid var(--border); }
+.review-item:last-child { border-bottom: none; }
+.review-item h3 { font-size: 15px; margin-bottom: 6px; }
+.review-item .review-content { font-size: 13px; color: var(--text-secondary); line-height: 1.6; white-space: pre-wrap; max-height: 120px; overflow: hidden; margin-bottom: 8px; cursor: pointer; }
+.review-item .review-content.expanded { max-height: none; }
+.review-edit textarea { min-height: 400px; font-size: 14px; line-height: 1.7; font-family: inherit; }
+.review-edit input { font-size: 15px; padding: 10px 14px; }
+.review-edit .form-group { margin-bottom: 20px; }
+.review-edit .form-group label { font-size: 15px; margin-bottom: 8px; }
+.review-item .llm-hint { padding: 8px 12px; background: #fffbeb; border-radius: var(--radius); font-size: 12px; color: #92400e; margin-bottom: 10px; }
+.review-actions { display: flex; gap: 8px; margin-top: 10px; }
+.btn-success { background: var(--success); color: #fff; }
+.btn-success:hover { opacity: .9; }
+.btn-warning { background: var(--warning); color: #fff; }
+.btn-warning:hover { opacity: .9; }
+.review-badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; }
+.badge-pending { background: #fef3c7; color: #92400e; }
+.badge-approved { background: #d1fae5; color: #065f46; }
+.badge-rejected { background: #fee2e2; color: #991b1b; }
+
+.tab-btn { padding: 8px 16px; border: none; background: none; cursor: pointer; font-size: 14px; color: var(--text-secondary); border-bottom: 2px solid transparent; margin-bottom: -2px; transition: all .2s; }
+.tab-btn:hover { color: var(--primary); }
+.tab-btn.active { color: var(--primary); border-bottom-color: var(--primary); font-weight: 600; }
+.tab-btn .tab-count { display: inline-block; min-width: 18px; height: 18px; line-height: 18px; text-align: center; border-radius: 9px; font-size: 11px; margin-left: 4px; }
+.tab-count-pending { background: #fef3c7; color: #92400e; }
+.tab-count-default { background: #f3f4f6; color: var(--text-secondary); }
+.op-btn { display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; border: none; background: none; cursor: pointer; border-radius: 4px; font-size: 15px; color: var(--text-secondary); transition: all .15s; }
+.op-btn:hover { background: #f3f4f6; }
+.op-btn.op-view:hover { color: var(--primary); }
+.op-btn.op-edit:hover { color: var(--primary); }
+.op-btn.op-approve:hover { color: var(--success); }
+.op-btn.op-reject:hover { color: var(--danger); }
+.op-btn.op-delete:hover { color: var(--danger); }
+.type-badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 500; }
+
+.log-entry { padding: 14px; border-bottom: 1px solid var(--border); }
+.log-entry:last-child { border-bottom: none; }
+.log-query { font-weight: 600; font-size: 15px; margin-bottom: 6px; }
+.log-meta { font-size: 12px; color: var(--text-secondary); margin-bottom: 8px; }
+.log-results { display: flex; flex-wrap: wrap; gap: 6px; }
+.log-result-item { display: inline-flex; align-items: center; gap: 4px; padding: 3px 10px; background: #f3f4f6; border-radius: 6px; font-size: 12px; max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.log-result-item.bad { background: #fee2e2; text-decoration: line-through; color: #991b1b; }
+.mark-bad-btn { background: none; border: none; cursor: pointer; color: var(--text-secondary); font-size: 14px; padding: 0 2px; }
+.mark-bad-btn:hover { color: var(--danger); }
+.progress-bar { height: 6px; background: var(--border); border-radius: 3px; overflow: hidden; }
+.progress-bar-fill { height: 100%; border-radius: 3px; }
+
 .hidden { display: none !important; }
 
 @media (max-width: 768px) {
@@ -97,27 +144,46 @@ textarea { resize: vertical; min-height: 100px; }
 <div class="app">
   <nav class="sidebar">
     <h1>📚 <span>Know</span></h1>
-    <a class="nav-item active" data-page="list">知识列表</a>
+    <a class="nav-item active" data-page="list">知识审核</a>
     <a class="nav-item" data-page="add">手动录入</a>
     <a class="nav-item" data-page="upload">文件上传</a>
     <a class="nav-item" data-page="tags">标签云</a>
+    <a class="nav-item" data-page="monitor">调用监控</a>
     <a class="nav-item" data-page="maintain">维护面板</a>
   </nav>
 
   <div class="main">
-    <!-- Knowledge List -->
+    <!-- Knowledge List (Table + Tabs) -->
     <div id="page-list">
-      <div class="search-bar">
-        <input id="search-input" placeholder="搜索知识..." />
-        <button class="btn btn-primary" onclick="doSearch()">搜索</button>
-        <button class="btn btn-outline" onclick="clearSearch()">清空</button>
-      </div>
       <div class="card">
         <div class="card-header">
-          <h2>知识列表</h2>
-          <span id="list-total" style="color:var(--text-secondary);font-size:13px;"></span>
+          <h2>知识审核</h2>
+          <button class="btn btn-outline btn-sm" onclick="loadList()">刷新</button>
         </div>
-        <div id="knowledge-list"></div>
+
+        <div id="list-tabs" style="display:flex;gap:0;border-bottom:2px solid var(--border);margin-bottom:16px;"></div>
+
+        <div class="search-bar">
+          <input id="search-input" placeholder="搜索知识..." />
+          <button class="btn btn-primary" onclick="doSearch()">搜索</button>
+          <button class="btn btn-outline" onclick="clearSearch()">清空</button>
+        </div>
+
+        <table style="width:100%;border-collapse:collapse;font-size:14px;">
+          <thead>
+            <tr style="border-bottom:2px solid var(--border);text-align:left;">
+              <th style="padding:8px 6px;width:90px;">类型</th>
+              <th style="padding:8px 6px;">标题</th>
+              <th style="padding:8px 6px;width:70px;">状态</th>
+              <th style="padding:8px 6px;width:120px;">标签</th>
+              <th style="padding:8px 6px;width:80px;">命中/有用</th>
+              <th style="padding:8px 6px;width:140px;">创建时间</th>
+              <th style="padding:8px 6px;width:130px;">操作</th>
+            </tr>
+          </thead>
+          <tbody id="knowledge-table-body"></tbody>
+        </table>
+
         <div class="pagination" id="pagination"></div>
       </div>
     </div>
@@ -171,6 +237,38 @@ textarea { resize: vertical; min-height: 100px; }
       </div>
     </div>
 
+    <!-- MCP Monitor -->
+    <div id="page-monitor" class="hidden">
+      <div class="stats-grid" id="monitor-stats"></div>
+
+      <div class="card">
+        <div class="card-header">
+          <h2>MCP 调用日志</h2>
+          <span style="color:var(--text-secondary);font-size:13px;">每次 MCP 搜索调用的记录，可标记召回不正确的知识</span>
+        </div>
+        <div id="monitor-logs"></div>
+      </div>
+
+      <div class="card" style="margin-top:16px;">
+        <div class="card-header">
+          <h2>知识调用排行</h2>
+          <span style="color:var(--text-secondary);font-size:13px;">按 MCP 命中次数排序</span>
+        </div>
+        <table style="width:100%;border-collapse:collapse;font-size:14px;">
+          <thead>
+            <tr style="border-bottom:2px solid var(--border);text-align:left;">
+              <th style="padding:8px;">标题</th>
+              <th style="padding:8px;width:80px;">命中</th>
+              <th style="padding:8px;width:80px;">有用</th>
+              <th style="padding:8px;width:80px;">不准确</th>
+              <th style="padding:8px;width:100px;">准确率</th>
+            </tr>
+          </thead>
+          <tbody id="ranking-body"></tbody>
+        </table>
+      </div>
+    </div>
+
     <!-- Maintain -->
     <div id="page-maintain" class="hidden">
       <div class="stats-grid" id="stats-grid"></div>
@@ -213,6 +311,7 @@ document.querySelectorAll('.nav-item').forEach(el => {
     currentPage = page;
     if (page === 'list') loadList();
     if (page === 'tags') loadTags();
+    if (page === 'monitor') loadMonitor();
     if (page === 'maintain') loadMaintain();
   });
 });
@@ -220,11 +319,21 @@ document.querySelectorAll('.nav-item').forEach(el => {
 // API helper
 async function api(path, opts = {}) {
   const url = API + path;
-  const res = await fetch(url, {
-    headers: { 'Content-Type': 'application/json', ...opts.headers },
-    ...opts
-  });
-  return res.json();
+  try {
+    const res = await fetch(url, {
+      headers: { 'Content-Type': 'application/json', ...opts.headers },
+      ...opts
+    });
+    if (!res.ok) {
+      const text = await res.text();
+      console.error(`API ${path} returned ${res.status}:`, text);
+      return { error: text };
+    }
+    return res.json();
+  } catch (e) {
+    console.error(`API ${path} network error:`, e);
+    return { error: e.message };
+  }
 }
 
 // Toast
@@ -235,84 +344,164 @@ function toast(msg, type = 'success') {
   setTimeout(() => el.classList.remove('show'), 3000);
 }
 
-// Knowledge List
+// Knowledge List (Table + Tabs)
+let listFilter = 'all';
+let allItems = [];
+let listStats = {};
+
 async function loadList() {
-  const data = await api(`/api/knowledge?offset=${listOffset}&limit=${listLimit}`);
-  renderList(data);
+  try {
+    const [data, stats] = await Promise.all([
+      api(`/api/knowledge?offset=0&limit=100`),
+      api('/api/stats')
+    ]);
+    allItems = data.items || [];
+    listStats = stats;
+    renderTabs();
+    renderTable();
+  } catch (e) {
+    console.error('loadList failed:', e);
+    document.getElementById('knowledge-table-body').innerHTML = '<tr><td colspan="7" style="padding:24px;text-align:center;color:var(--danger);">加载失败: ' + e.message + '</td></tr>';
+  }
 }
 
-function renderList(data) {
-  const items = data.items || [];
-  const total = data.total || 0;
-  const entryCount = data.entry_count || 0;
-  const totalLabel = searchMode && entryCount
-    ? `${entryCount} 个入口命中，展开 ${total} 条关联知识`
-    : `共 ${total} 条`;
-  document.getElementById('list-total').textContent = totalLabel;
-  const el = document.getElementById('knowledge-list');
-  if (!items || items.length === 0) {
-    el.innerHTML = '<p style="padding:20px;text-align:center;color:var(--text-secondary);">暂无知识</p>';
+function renderTabs() {
+  const total = allItems.length;
+  const pendingCount = allItems.filter(k => k.ReviewStatus === 'pending' || k.ReviewStatus === 'needs_revision').length;
+  const approvedCount = allItems.filter(k => k.ReviewStatus === 'approved').length;
+  const rejectedCount = allItems.filter(k => k.ReviewStatus === 'rejected').length;
+
+  const tabs = [
+    { key: 'all', label: '全部', count: total, countClass: 'tab-count-default' },
+    { key: 'pending', label: '待审核', count: pendingCount, countClass: 'tab-count-pending' },
+    { key: 'approved', label: '已通过', count: approvedCount, countClass: 'tab-count-default' },
+    { key: 'rejected', label: '已拒绝', count: rejectedCount, countClass: 'tab-count-default' },
+  ];
+
+  document.getElementById('list-tabs').innerHTML = tabs.map(t =>
+    `<button class="tab-btn ${listFilter === t.key ? 'active' : ''}" onclick="setListFilter('${t.key}')">${t.label} <span class="tab-count ${t.countClass}">${t.count}</span></button>`
+  ).join('');
+}
+
+function setListFilter(filter) {
+  listFilter = filter;
+  listOffset = 0;
+  renderTabs();
+  renderTable();
+}
+
+function renderTable() {
+  const typeColors = {
+    pitfall: '#ef4444', decision: '#8b5cf6', faq: '#3b82f6', general: '#6b7280',
+    preference: '#ec4899', thinking: '#f59e0b', lesson: '#f97316',
+    business: '#10b981', architecture: '#06b6d4', fact: '#6366f1',
+  };
+  const typeLabels = {
+    pitfall: '踩坑', decision: '决策', faq: '问答', general: '通用',
+    preference: '偏好', thinking: '思考', lesson: '经验',
+    business: '业务', architecture: '架构', fact: '事实',
+  };
+
+  let filtered = allItems;
+  if (listFilter === 'pending') {
+    filtered = allItems.filter(k => k.ReviewStatus === 'pending' || k.ReviewStatus === 'needs_revision');
+  } else if (listFilter !== 'all') {
+    filtered = allItems.filter(k => k.ReviewStatus === listFilter);
+  }
+
+  const q = document.getElementById('search-input').value.trim().toLowerCase();
+  if (q) {
+    filtered = filtered.filter(k => (k.Title||'').toLowerCase().includes(q) || (k.Content||'').toLowerCase().includes(q) || (k.Tags||[]).some(t => t.toLowerCase().includes(q)));
+  }
+
+  const start = listOffset;
+  const end = Math.min(start + listLimit, filtered.length);
+  const page = filtered.slice(start, end);
+
+  const tbody = document.getElementById('knowledge-table-body');
+  if (page.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="7" style="padding:24px;text-align:center;color:var(--text-secondary);">暂无知识</td></tr>';
     document.getElementById('pagination').innerHTML = '';
     return;
   }
-  el.innerHTML = items.map(item => {
-    const k = item.Item || item;
-    const tags = (k.Tags || []).map(t => `<span class="tag">${esc(t)}</span>`).join('');
-    const retriever = item.Retriever || '';
-    const isExpanded = retriever === 'expansion' || retriever === 'source_fragment';
-    const retrieverLabel = retriever === 'keyword' ? '关键词' : retriever === 'fts' ? '全文' : retriever === 'vector' ? '语义' : retriever === 'expansion' ? '关联展开' : retriever === 'source_fragment' ? '源碎片' : '';
-    const borderStyle = isExpanded ? 'border-left:3px solid var(--warning);padding-left:13px;' : '';
-    const score = item.Score ? `<span>相关度: ${(item.Score * 100).toFixed(0)}%</span>` : '';
-    const statusBadge = k.Status === 'synthesis' ? '<span style="color:var(--success);font-weight:600;">融合</span>' : k.Status === 'consolidated' ? '<span style="color:var(--text-secondary);">已合并</span>' : '';
+
+  tbody.innerHTML = page.map(k => {
+    const typeColor = typeColors[k.KnowledgeType] || '#6b7280';
+    const typeLabel = typeLabels[k.KnowledgeType] || k.KnowledgeType || '—';
+    const typeBadge = k.KnowledgeType && k.KnowledgeType !== 'general'
+      ? `<span class="type-badge" style="background:${typeColor}20;color:${typeColor};">${typeLabel}</span>` : '<span style="color:var(--text-secondary);">—</span>';
+
+    const reviewBadge = k.ReviewStatus === 'pending' ? '<span class="review-badge badge-pending">待审核</span>'
+      : k.ReviewStatus === 'approved' ? '<span class="review-badge badge-approved">已通过</span>'
+      : k.ReviewStatus === 'rejected' ? '<span class="review-badge badge-rejected">已拒绝</span>'
+      : k.ReviewStatus === 'needs_revision' ? '<span class="review-badge badge-pending">需修改</span>' : '';
+
+    const tags = (k.Tags || []).slice(0, 2).map(t => `<span class="tag">${esc(t)}</span>`).join('') || '<span style="color:var(--text-secondary);">-</span>';
+    const createdAt = k.CreatedAt ? new Date(k.CreatedAt).toLocaleString('zh-CN', {year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}) : '';
+
+    const isPending = k.ReviewStatus === 'pending' || k.ReviewStatus === 'needs_revision';
+    const approveBtn = isPending ? `<button class="op-btn op-approve" title="通过" onclick="event.stopPropagation();quickApprove('${esc(k.ID)}')">✓</button>` : '';
+    const rejectBtn = isPending ? `<button class="op-btn op-reject" title="拒绝" onclick="event.stopPropagation();quickReject('${esc(k.ID)}')">✕</button>` : '';
+
     return `
-      <div class="knowledge-item" style="${borderStyle}" onclick="showDetail(${JSON.stringify(k.ID)})">
-        <h3>${esc(k.Title)} ${statusBadge} ${retrieverLabel ? `<span style="font-size:11px;color:var(--text-secondary);font-weight:400;margin-left:8px;">[${retrieverLabel}]</span>` : ''}</h3>
-        <p>${esc(k.Content.substring(0, 200))}</p>
-        <div style="margin-top:6px;">${tags}</div>
-        <div class="meta">
-          <span>来源: ${k.Source || 'manual'}</span>
-          <span>命中: ${k.HitCount || 0}</span>
-          <span>有用: ${k.UsefulCount || 0}</span>
-          ${score}
-        </div>
-      </div>`;
+      <tr style="border-bottom:1px solid var(--border);cursor:pointer;" onclick="showDetail('${esc(k.ID)}')">
+        <td style="padding:8px 6px;">${typeBadge}</td>
+        <td style="padding:8px 6px;"><span style="color:var(--primary);font-weight:500;">${esc(k.Title)}</span></td>
+        <td style="padding:8px 6px;">${reviewBadge}</td>
+        <td style="padding:8px 6px;">${tags}</td>
+        <td style="padding:8px 6px;font-size:13px;">${k.HitCount || 0} / ${k.UsefulCount || 0}</td>
+        <td style="padding:8px 6px;font-size:12px;color:var(--text-secondary);">${createdAt}</td>
+        <td style="padding:8px 6px;" onclick="event.stopPropagation();">
+          <button class="op-btn op-view" title="查看" onclick="showDetail('${esc(k.ID)}')">👁</button>
+          <button class="op-btn op-edit" title="编辑" onclick="showDetail('${esc(k.ID)}');setTimeout(()=>toggleDetailEdit(),100)">✎</button>
+          ${approveBtn}${rejectBtn}
+        </td>
+      </tr>`;
   }).join('');
 
-  if (!searchMode) {
-    const pages = Math.ceil(total / listLimit);
-    const cur = Math.floor(listOffset / listLimit);
-    let html = '';
-    for (let i = 0; i < pages && i < 10; i++) {
-      html += `<button class="btn btn-sm ${i === cur ? 'btn-primary' : 'btn-outline'}" onclick="goPage(${i})">${i + 1}</button>`;
-    }
-    document.getElementById('pagination').innerHTML = html;
-  } else {
-    document.getElementById('pagination').innerHTML = '';
+  const total = filtered.length;
+  const pages = Math.ceil(total / listLimit);
+  const cur = Math.floor(listOffset / listLimit);
+  let phtml = '';
+  for (let i = 0; i < pages && i < 10; i++) {
+    phtml += `<button class="btn btn-sm ${i === cur ? 'btn-primary' : 'btn-outline'}" onclick="goPage(${i})">${i + 1}</button>`;
   }
+  document.getElementById('pagination').innerHTML = phtml;
 }
 
 function goPage(page) {
   listOffset = page * listLimit;
-  loadList();
+  renderTable();
 }
 
-// Search
-async function doSearch() {
-  const q = document.getElementById('search-input').value.trim();
-  if (!q) { clearSearch(); return; }
-  searchMode = true;
-  const data = await api(`/api/search?q=${encodeURIComponent(q)}&limit=20`);
-  renderList(data);
+function doSearch() {
+  listOffset = 0;
+  renderTable();
 }
 
 function clearSearch() {
   document.getElementById('search-input').value = '';
-  searchMode = false;
   listOffset = 0;
-  loadList();
+  renderTable();
 }
 
 document.getElementById('search-input').addEventListener('keydown', e => { if (e.key === 'Enter') doSearch(); });
+document.getElementById('search-input').addEventListener('input', () => { listOffset = 0; renderTable(); });
+
+async function quickApprove(id) {
+  const result = await api('/api/review', { method: 'POST', body: JSON.stringify({ action: 'approve', id }) });
+  if (result.error) { toast(result.error, 'error'); return; }
+  toast('已通过');
+  loadList();
+}
+
+async function quickReject(id) {
+  const reason = prompt('拒绝原因（可留空）:') || '';
+  const result = await api('/api/review', { method: 'POST', body: JSON.stringify({ action: 'reject', id, reason }) });
+  if (result.error) { toast(result.error, 'error'); return; }
+  toast('已拒绝');
+  loadList();
+}
 
 // Detail
 async function showDetail(id) {
@@ -322,12 +511,21 @@ async function showDetail(id) {
   let relatedHTML = '';
   if (item.RelatedIDs && item.RelatedIDs.length > 0) {
     relatedHTML = '<div class="related"><h3>关联知识</h3>' +
-      item.RelatedIDs.map(rid => `<a href="#" onclick="showDetail(${JSON.stringify(rid)});return false;">${esc(rid)}</a>`).join('') +
+      item.RelatedIDs.map(rid => `<a href="#" data-id="${esc(rid)}" onclick="showDetail(this.dataset.id);return false;">${esc(rid)}</a>`).join('') +
       '</div>';
   }
 
+  const reviewBadgeMap = {
+    pending: '<span class="review-badge badge-pending">待审核</span>',
+    approved: '<span class="review-badge badge-approved">已通过</span>',
+    rejected: '<span class="review-badge badge-rejected">已拒绝</span>',
+    needs_revision: '<span class="review-badge badge-pending">需修改</span>',
+  };
+  const detailReviewBadge = reviewBadgeMap[item.ReviewStatus] || '';
+  const tagsRaw = (item.Tags || []).join(', ');
+
   document.getElementById('detail-content').innerHTML = `
-    <h2>${esc(item.Title)}</h2>
+    <h2>${esc(item.Title)} ${detailReviewBadge}</h2>
     <div style="margin-bottom:12px;">
       ${(item.Tags || []).map(t => `<span class="tag">${esc(t)}</span>`).join('')}
     </div>
@@ -335,11 +533,44 @@ async function showDetail(id) {
       来源: ${item.Source} | 状态: ${item.Status} | 命中: ${item.HitCount} | 有用: ${item.UsefulCount}
     </div>
     ${item.Summary ? `<div style="padding:12px;background:#eff6ff;border-radius:var(--radius);margin-bottom:12px;font-size:14px;"><strong>摘要:</strong> ${esc(item.Summary)}</div>` : ''}
-    <div class="content">${esc(item.Content)}</div>
-    <div style="display:flex;gap:8px;">
-      <button class="btn btn-primary btn-sm" onclick="markUseful(${JSON.stringify(item.ID)})">标记有用</button>
-      <button class="btn btn-danger btn-sm" onclick="deleteItem(${JSON.stringify(item.ID)})">删除</button>
+
+    <div id="detail-view-mode">
+      <div class="content">${esc(item.Content)}</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <button class="btn btn-outline btn-sm" onclick="toggleDetailEdit('${esc(item.ID)}')">✎ 编辑</button>
+        <button class="btn btn-primary btn-sm" data-id="${esc(item.ID)}" onclick="markUseful(this.dataset.id)">标记有用</button>
+        <button class="btn btn-danger btn-sm" data-id="${esc(item.ID)}" onclick="deleteItem(this.dataset.id)">删除</button>
+      </div>
     </div>
+
+    <div id="detail-edit-mode" class="hidden">
+      <div class="form-group">
+        <label>标题</label>
+        <input id="detail-edit-title" value="${esc(item.Title)}" />
+      </div>
+      <div class="form-group">
+        <label>内容</label>
+        <textarea id="detail-edit-content" rows="15" style="min-height:300px;font-size:14px;line-height:1.7;">${esc(item.Content)}</textarea>
+      </div>
+      <div class="form-group">
+        <label>标签</label>
+        <input id="detail-edit-tags" value="${esc(tagsRaw)}" placeholder="逗号分隔" />
+      </div>
+      <div class="form-group">
+        <label>审核状态</label>
+        <select id="detail-edit-review">
+          <option value="pending" ${item.ReviewStatus === 'pending' ? 'selected' : ''}>待审核</option>
+          <option value="approved" ${item.ReviewStatus === 'approved' ? 'selected' : ''}>已通过</option>
+          <option value="rejected" ${item.ReviewStatus === 'rejected' ? 'selected' : ''}>已拒绝</option>
+          <option value="needs_revision" ${item.ReviewStatus === 'needs_revision' ? 'selected' : ''}>需修改</option>
+        </select>
+      </div>
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-primary btn-sm" onclick="saveDetailEdit('${esc(item.ID)}')">保存</button>
+        <button class="btn btn-outline btn-sm" onclick="toggleDetailEdit()">取消</button>
+      </div>
+    </div>
+
     ${relatedHTML}
   `;
   document.getElementById('detail-panel').classList.add('open');
@@ -352,6 +583,38 @@ function closeDetail() {
 async function markUseful(id) {
   await api('/api/feedback', { method: 'POST', body: JSON.stringify({ item_id: id }) });
   toast('已标记为有用');
+}
+
+function toggleDetailEdit() {
+  document.getElementById('detail-view-mode').classList.toggle('hidden');
+  document.getElementById('detail-edit-mode').classList.toggle('hidden');
+}
+
+async function saveDetailEdit(id) {
+  const title = document.getElementById('detail-edit-title').value.trim();
+  const content = document.getElementById('detail-edit-content').value.trim();
+  const tagsStr = document.getElementById('detail-edit-tags').value.trim();
+  const tags = tagsStr ? tagsStr.split(',').map(t => t.trim()).filter(Boolean) : [];
+  const reviewStatus = document.getElementById('detail-edit-review').value;
+
+  if (!content) { toast('内容不能为空', 'error'); return; }
+
+  const result = await api(`/api/knowledge/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify({ title, content, tags })
+  });
+  if (result.error) { toast(result.error, 'error'); return; }
+
+  const actionMap = { approved: 'approve', rejected: 'reject', needs_revision: 'revision', pending: 'pending' };
+  const reviewResult = await api('/api/review', {
+    method: 'POST',
+    body: JSON.stringify({ action: actionMap[reviewStatus] || 'approve', id, reason: 'manual status change' })
+  });
+  if (reviewResult.error) { toast(reviewResult.error, 'error'); return; }
+
+  toast('已保存');
+  await loadList();
+  showDetail(id);
 }
 
 async function deleteItem(id) {
@@ -429,7 +692,7 @@ async function loadTags() {
   const maxCount = Math.max(...entries.map(e => e[1]), 1);
   document.getElementById('tag-cloud').innerHTML = entries.map(([tag, count]) => {
     const size = 12 + (count / maxCount) * 16;
-    return `<span class="tag" style="font-size:${size}px;" onclick="searchByTag(${JSON.stringify(tag)})">${esc(tag)} (${count})</span>`;
+    return `<span class="tag" style="font-size:${size}px;cursor:pointer;" data-tag="${esc(tag)}" onclick="searchByTag(this.dataset.tag)">${esc(tag)} (${count})</span>`;
   }).join('') || '<p style="color:var(--text-secondary);">暂无标签</p>';
 }
 
@@ -446,11 +709,12 @@ function searchByTag(tag) {
 async function loadMaintain() {
   const [stats, tasks] = await Promise.all([api('/api/stats'), api('/api/maintain')]);
 
+  const review = stats.review || {};
   document.getElementById('stats-grid').innerHTML = `
     <div class="stat-card"><div class="number">${stats.total || 0}</div><div class="label">总知识数</div></div>
     <div class="stat-card"><div class="number">${stats.active || 0}</div><div class="label">活跃</div></div>
-    <div class="stat-card"><div class="number">${stats.synthesis || 0}</div><div class="label">融合</div></div>
-    <div class="stat-card"><div class="number">${stats.consolidated || 0}</div><div class="label">已合并</div></div>
+    <div class="stat-card"><div class="number" style="color:var(--warning);">${review.pending || 0}</div><div class="label">待审核</div></div>
+    <div class="stat-card"><div class="number" style="color:var(--success);">${review.approved || 0}</div><div class="label">已通过</div></div>
   `;
 
   const taskMeta = {
@@ -468,7 +732,7 @@ async function loadMaintain() {
         <strong>${meta.label}</strong> <span style="font-size:12px;color:var(--text-secondary);margin-left:4px;">(${name})</span>
         <div style="font-size:13px;color:var(--text-secondary);margin-top:4px;">${meta.desc}</div>
       </div>
-      <button class="btn btn-sm btn-outline" onclick="runTask(${JSON.stringify(name)})">运行</button>
+      <button class="btn btn-sm btn-outline" data-task="${esc(name)}" onclick="runTask(this.dataset.task)">运行</button>
     </li>`;
   }).join('') || '<li>无可用任务</li>';
 }
@@ -491,6 +755,106 @@ async function runAllTasks() {
   el.classList.remove('hidden');
   toast('全部任务完成');
   loadMaintain();
+}
+
+// MCP Monitor
+let knowledgeTitleCache = {};
+
+async function loadMonitor() {
+  const [rankingData, logsData] = await Promise.all([
+    api('/api/monitor/ranking?limit=20'),
+    api('/api/monitor/logs?limit=200&source=mcp')
+  ]);
+
+  // Build title cache from ranking
+  (rankingData.items || []).forEach(r => { knowledgeTitleCache[r.id] = r.title; });
+
+  // Compute MCP-only stats from logs
+  const logs = logsData.items || [];
+  const mcpTotal = logs.length;
+  const mcpWithResults = logs.filter(l => l.result_count > 0).length;
+  const mcpZero = mcpTotal - mcpWithResults;
+  const mcpRecallRate = mcpTotal > 0 ? ((mcpWithResults / mcpTotal) * 100).toFixed(0) : 0;
+  const mcpAvgCount = mcpTotal > 0 ? (logs.reduce((s, l) => s + l.result_count, 0) / mcpTotal).toFixed(1) : 0;
+
+  document.getElementById('monitor-stats').innerHTML = `
+    <div class="stat-card"><div class="number">${mcpTotal}</div><div class="label">MCP 调用次数</div></div>
+    <div class="stat-card"><div class="number">${mcpRecallRate}%</div><div class="label">有效召回率</div></div>
+    <div class="stat-card"><div class="number">${mcpZero}</div><div class="label">空召回次数</div></div>
+    <div class="stat-card"><div class="number">${mcpAvgCount}</div><div class="label">平均返回条数</div></div>
+  `;
+
+  // MCP call logs
+  const logsEl = document.getElementById('monitor-logs');
+  if (logs.length === 0) {
+    logsEl.innerHTML = '<p style="padding:20px;text-align:center;color:var(--text-secondary);">暂无 MCP 调用记录</p>';
+  } else {
+    logsEl.innerHTML = logs.map(log => {
+      const badSet = new Set(log.feedback_bad_ids || []);
+      const resultItems = (log.result_ids || []).map(rid => {
+        const isBad = badSet.has(rid);
+        const title = knowledgeTitleCache[rid] || rid.substring(0, 8) + '...';
+        const badBtn = isBad
+          ? '<span style="color:var(--danger);font-size:11px;margin-left:2px;">已标记不准确</span>'
+          : `<button class="mark-bad-btn" title="标记不正确" onclick="markBadRecall('${esc(log.id)}','${esc(rid)}',this)">✕</button>`;
+        return `<span class="log-result-item ${isBad ? 'bad' : ''}"><a href="#" onclick="showDetail('${esc(rid)}');return false;" style="color:inherit;text-decoration:none;">${esc(title)}</a> ${badBtn}</span>`;
+      }).join('');
+
+      const hasResults = log.result_count > 0;
+      const hasResultIds = (log.result_ids || []).length > 0;
+      return `
+        <div class="log-entry">
+          <div style="display:flex;justify-content:space-between;align-items:center;">
+            <div class="log-query">note_search("${esc(log.query)}")</div>
+            <span style="font-size:11px;padding:2px 8px;border-radius:4px;${hasResults ? 'background:#d1fae5;color:#065f46;' : 'background:#fee2e2;color:#991b1b;'}">${hasResults ? `召回 ${log.result_count} 条` : '空召回'}</span>
+          </div>
+          <div class="log-meta">${log.created_at ? log.created_at.substring(0, 19).replace('T', ' ') : ''} ${badSet.size > 0 ? `· <span style="color:var(--danger);font-weight:600;">${badSet.size} 条标记不准确</span>` : ''}</div>
+          <div class="log-results">${resultItems || (hasResults ? '<span style="color:var(--text-secondary);font-size:12px;">（旧记录，未记录具体召回知识）</span>' : '<span style="color:var(--text-secondary);font-size:12px;">未返回任何知识</span>')}</div>
+        </div>`;
+    }).join('');
+  }
+
+  // Ranking table
+  const rankings = rankingData.items || [];
+  const tbody = document.getElementById('ranking-body');
+  if (rankings.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="5" style="padding:20px;text-align:center;color:var(--text-secondary);">暂无调用数据</td></tr>';
+  } else {
+    tbody.innerHTML = rankings.map(r => {
+      const total = r.hit_count || 1;
+      const accuratePct = total > 0 ? (((total - r.bad_count) / total) * 100).toFixed(0) : 100;
+      const barColor = r.bad_count > 0 ? 'var(--danger)' : 'var(--success)';
+      return `
+        <tr style="border-bottom:1px solid var(--border);">
+          <td style="padding:8px;"><a href="#" onclick="showDetail('${esc(r.id)}');return false;" style="color:var(--primary);text-decoration:none;">${esc(r.title)}</a></td>
+          <td style="padding:8px;font-weight:600;">${r.hit_count}</td>
+          <td style="padding:8px;color:var(--success);">${r.useful_count}</td>
+          <td style="padding:8px;color:${r.bad_count > 0 ? 'var(--danger);font-weight:600;' : 'var(--text-secondary);'}">${r.bad_count}</td>
+          <td style="padding:8px;">
+            <div style="display:flex;align-items:center;gap:6px;">
+              <div class="progress-bar" style="flex:1;">
+                <div class="progress-bar-fill" style="width:${accuratePct}%;background:${barColor};"></div>
+              </div>
+              <span style="font-size:12px;min-width:35px;">${accuratePct}%</span>
+            </div>
+          </td>
+        </tr>`;
+    }).join('');
+  }
+}
+
+async function markBadRecall(searchLogId, badItemId, btnEl) {
+  const result = await api('/api/monitor/bad_recall', {
+    method: 'POST',
+    body: JSON.stringify({ search_log_id: searchLogId, bad_item_id: badItemId })
+  });
+  if (result.error) { toast(result.error, 'error'); return; }
+  toast('已标记为不准确');
+  if (btnEl) {
+    const span = btnEl.parentElement;
+    span.classList.add('bad');
+    btnEl.remove();
+  }
 }
 
 function esc(s) { if (!s) return ''; const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }

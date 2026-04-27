@@ -10,28 +10,36 @@ import (
 )
 
 const (
-	decayDays      = 90
-	decayScanLimit = 1000
+	defaultDecayDays      = 90
+	defaultDecayScanLimit = 1000
 )
 
 type Decay struct {
-	store port.Store
+	store     port.Store
+	days      int
+	scanLimit int
 }
 
-func NewDecay(store port.Store) *Decay {
-	return &Decay{store: store}
+func NewDecay(store port.Store, days, scanLimit int) *Decay {
+	if days <= 0 {
+		days = defaultDecayDays
+	}
+	if scanLimit <= 0 {
+		scanLimit = defaultDecayScanLimit
+	}
+	return &Decay{store: store, days: days, scanLimit: scanLimit}
 }
 
 func (t *Decay) Name() string        { return "decay" }
 func (t *Decay) Description() string { return "Reduce weight of long-unused knowledge" }
 
 func (t *Decay) Run(ctx context.Context, ownerID string) (*domain.MaintainResult, error) {
-	items, err := t.store.ListByStatus(ctx, ownerID, domain.StatusActive, 0, decayScanLimit)
+	items, err := t.store.ListByStatus(ctx, ownerID, domain.StatusActive, 0, t.scanLimit)
 	if err != nil {
 		return nil, err
 	}
 
-	threshold := time.Now().Add(-decayDays * 24 * time.Hour)
+	threshold := time.Now().Add(-time.Duration(t.days) * 24 * time.Hour)
 	affected := 0
 
 	for _, item := range items {

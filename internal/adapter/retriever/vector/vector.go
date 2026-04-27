@@ -14,9 +14,11 @@ type Retriever struct {
 	scoreThreshold float64
 }
 
+const defaultScoreThreshold = 0.7
+
 func New(pg *pgstore.PgStore, embedder port.Embedder, scoreThreshold float64) *Retriever {
 	if scoreThreshold <= 0 {
-		scoreThreshold = 0.7
+		scoreThreshold = defaultScoreThreshold
 	}
 	return &Retriever{pg: pg, embedder: embedder, scoreThreshold: scoreThreshold}
 }

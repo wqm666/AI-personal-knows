@@ -26,6 +26,7 @@ import (
 	"github.com/personal-know/internal/adapter/retriever/merger"
 	"github.com/personal-know/internal/adapter/retriever/orchestrator"
 	"github.com/personal-know/internal/adapter/retriever/vector"
+	"github.com/personal-know/internal/adapter/reviewer"
 	"github.com/personal-know/internal/adapter/store/pgstore"
 	mcptransport "github.com/personal-know/internal/adapter/transport/mcp"
 	"github.com/personal-know/internal/port"
@@ -41,7 +42,11 @@ func main() {
 	cfg := loadConfig()
 
 	// --- Store ---
-	pg, err := pgstore.New(cfg.Store.DSN, cfg.LLM.EmbeddingDimension)
+	pg, err := pgstore.New(cfg.Store.DSN, cfg.LLM.EmbeddingDimension, pgstore.StoreOpts{
+		MaxOpenConns:       cfg.Store.MaxOpenConns,
+		MaxIdleConns:       cfg.Store.MaxIdleConns,
+		ConnMaxLifetimeSec: cfg.Store.ConnMaxLifetimeSeconds,
+	})
 	if err != nil {
 		slog.Error("failed to init store", "error", err)
 		os.Exit(1)
@@ -59,14 +64,14 @@ func main() {
 	// --- Embedder ---
 	var embedder port.Embedder
 	if cfg.LLM.BaseURL != "" && cfg.LLM.EmbeddingModel != "" {
-		embedder = openaiembed.New(cfg.LLM.BaseURL, cfg.LLM.APIKey, cfg.LLM.EmbeddingModel)
+		embedder = openaiembed.New(cfg.LLM.BaseURL, cfg.LLM.APIKey, cfg.LLM.EmbeddingModel, cfg.LLM.EmbedTimeoutSeconds)
 		slog.Info("embedder initialized", "model", cfg.LLM.EmbeddingModel)
 	}
 
 	// --- LLM Client ---
 	var llm port.LLMClient
 	if cfg.LLM.BaseURL != "" && cfg.LLM.ChatModel != "" {
-		llm = openaillm.New(cfg.LLM.BaseURL, cfg.LLM.APIKey, cfg.LLM.ChatModel)
+		llm = openaillm.New(cfg.LLM.BaseURL, cfg.LLM.APIKey, cfg.LLM.ChatModel, cfg.LLM.ChatTimeoutSeconds)
 		slog.Info("llm client initialized", "model", cfg.LLM.ChatModel)
 	}
 
@@ -96,7 +101,7 @@ func main() {
 	}
 
 	// --- Deduplicator ---
-	dedup := vector_dedup.New(pg)
+	dedup := vector_dedup.New(pg, cfg.Dedup.ReinforceThreshold, cfg.Dedup.RelateThreshold)
 	if llm != nil {
 		dedup.SetLLM(llm)
 	}
@@ -104,13 +109,13 @@ func main() {
 	// --- Maintainer ---
 	runner := maintain.NewRunner()
 	if embedder != nil {
-		runner.Register(maintain.NewLinkDiscovery(pg, embedder))
+		runner.Register(maintain.NewLinkDiscovery(pg, embedder, cfg.Maintain.LinkThreshold, cfg.Maintain.LinkScanLimit))
 	}
 	if llm != nil {
-		runner.Register(maintain.NewConsolidation(pg, llm, idGen))
-		runner.Register(maintain.NewTagCluster(pg, llm))
+		runner.Register(maintain.NewConsolidation(pg, llm, idGen, cfg.Maintain.ConsolidationMinCluster, cfg.Maintain.ConsolidationScanLimit))
+		runner.Register(maintain.NewTagCluster(pg, llm, cfg.Maintain.TagClusterScanLimit))
 	}
-	runner.Register(maintain.NewDecay(pg))
+	runner.Register(maintain.NewDecay(pg, cfg.Maintain.DecayDays, cfg.Maintain.DecayScanLimit))
 	slog.Info("maintainer initialized", "tasks", runner.ListTasks())
 
 	// --- Service ---
@@ -118,6 +123,11 @@ func main() {
 	if llm != nil {
 		svc.SetLLM(llm)
 	}
+
+	// --- Reviewer ---
+	rev := reviewer.New(llm, pg)
+	svc.SetReviewer(rev)
+	slog.Info("reviewer initialized", "has_llm", llm != nil)
 
 	// --- Backfill embeddings on startup ---
 	backfillCtx, backfillCancel := context.WithCancel(context.Background())
@@ -212,7 +222,14 @@ func loadConfig() *port.Config {
 		cfg.Server.APIKey = key
 	}
 	if origins := os.Getenv("CORS_ORIGINS"); origins != "" {
-		cfg.Server.CORSOrigins = strings.Split(origins, ",")
+		parts := strings.Split(origins, ",")
+		trimmed := make([]string, 0, len(parts))
+		for _, p := range parts {
+			if s := strings.TrimSpace(p); s != "" {
+				trimmed = append(trimmed, s)
+			}
+		}
+		cfg.Server.CORSOrigins = trimmed
 	}
 
 	return cfg
@@ -253,11 +270,7 @@ func apiKeyMiddleware(next http.Handler, apiKey string) http.Handler {
 			return
 		}
 
-		// Check X-API-Key header or query param
 		key := r.Header.Get("X-API-Key")
-		if key == "" {
-			key = r.URL.Query().Get("api_key")
-		}
 		if key != apiKey {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusUnauthorized)

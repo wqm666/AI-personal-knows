@@ -10,31 +10,38 @@ import (
 	"github.com/personal-know/internal/port"
 )
 
-type TagCluster struct {
-	store port.Store
-	llm   port.LLMClient
-}
-
 const (
-	tagClusterScanLimit = 1000
-	minTagsForCluster   = 5
+	defaultTagClusterScanLimit = 1000
+	minTagsForCluster          = 5
 )
 
-func NewTagCluster(store port.Store, llm port.LLMClient) *TagCluster {
-	return &TagCluster{store: store, llm: llm}
+type TagCluster struct {
+	store     port.Store
+	llm       port.LLMClient
+	scanLimit int
+}
+
+func NewTagCluster(store port.Store, llm port.LLMClient, scanLimit int) *TagCluster {
+	if scanLimit <= 0 {
+		scanLimit = defaultTagClusterScanLimit
+	}
+	return &TagCluster{store: store, llm: llm, scanLimit: scanLimit}
 }
 
 func (t *TagCluster) Name() string        { return "tag_cluster" }
 func (t *TagCluster) Description() string { return "Normalize synonymous tags via LLM" }
 
 func (t *TagCluster) Run(ctx context.Context, ownerID string) (*domain.MaintainResult, error) {
-	items, err := t.store.ListByStatus(ctx, ownerID, domain.StatusActive, 0, tagClusterScanLimit)
+	items, err := t.store.ListByStatus(ctx, ownerID, domain.StatusActive, 0, t.scanLimit)
 	if err != nil {
 		return nil, err
 	}
 
 	tagCounts := make(map[string]int)
 	for _, item := range items {
+		if item.ReviewStatus != domain.ReviewApproved {
+			continue
+		}
 		for _, tag := range item.Tags {
 			tagCounts[tag]++
 		}

@@ -24,12 +24,17 @@ type Knowledge struct {
 	Status           string // active / consolidated / synthesis / superseded
 	ConsolidatedFrom []string
 
+	ReviewStatus string // pending / approved / rejected / needs_revision
+	Confidence   int    // 0-100, LLM-assessed quality score
+	ReviewReason string // explanation from the review process
+
 	HitCount    int
 	UsefulCount int
 	LastHitAt   *time.Time
 
-	CreatedAt time.Time
-	UpdatedAt time.Time
+	CreatedAt  time.Time
+	UpdatedAt  time.Time
+	ReviewedAt *time.Time
 }
 
 const (
@@ -64,3 +69,16 @@ const (
 	CategorySubjective = "subjective"
 	CategoryObjective  = "objective"
 )
+
+const (
+	ReviewPending       = "pending"
+	ReviewApproved      = "approved"
+	ReviewRejected      = "rejected"
+	ReviewNeedsRevision = "needs_revision"
+)
+
+type ReviewResult struct {
+	Status     string `json:"status"`     // approved / rejected / needs_revision
+	Confidence int    `json:"confidence"` // 0-100
+	Reason     string `json:"reason"`
+}

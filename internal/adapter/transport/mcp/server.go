@@ -66,6 +66,20 @@ Lightweight: runs in background, auto-filters low-value content, auto-deduplicat
 		mcp.WithString("project_context", mcp.Description("Current project or business context for better extraction")),
 	), newAutoCaptureHandler(svc, identity))
 
+	s.AddTool(mcp.NewTool("note_review",
+		mcp.WithDescription(`Manage the knowledge review queue. Knowledge follows a git-like flow: new items enter as "pending" (staging area) and require human approval to become "approved" (main branch). Only approved items are returned by note_search.
+
+Actions:
+- "list": Show pending items with optional LLM quality suggestions (default)
+- "approve": Approve a pending item by ID — it becomes searchable
+- "reject": Reject a pending item by ID — it will not be searchable
+- "revision": Request revision — marks item as needs_revision`),
+		mcp.WithString("action", mcp.Description("Action: list / approve / reject / revision. Default: list")),
+		mcp.WithString("id", mcp.Description("Knowledge item ID (required for approve/reject/revision)")),
+		mcp.WithString("reason", mcp.Description("Reason for the review decision")),
+		mcp.WithNumber("limit", mcp.Description("Max pending items to list, default 20")),
+	), newReviewHandler(svc, identity))
+
 	s.AddTool(mcp.NewTool("note_maintain",
 		mcp.WithDescription("Trigger background knowledge maintenance tasks: link_discovery, consolidation, decay, tag_cluster. Run all if no tasks specified."),
 		mcp.WithString("tasks", mcp.Description("Comma-separated task names to run. Empty = run all.")),

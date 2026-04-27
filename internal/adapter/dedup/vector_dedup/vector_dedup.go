@@ -13,17 +13,26 @@ import (
 )
 
 const (
-	reinforceThreshold = 0.95
-	relateThreshold    = 0.75
+	defaultReinforceThreshold = 0.95
+	defaultRelateThreshold    = 0.75
+	contradictionTruncateLen  = 1500
 )
 
 type Dedup struct {
-	pg  *pgstore.PgStore
-	llm port.LLMClient
+	pg                 *pgstore.PgStore
+	llm                port.LLMClient
+	reinforceThreshold float64
+	relateThreshold    float64
 }
 
-func New(pg *pgstore.PgStore) *Dedup {
-	return &Dedup{pg: pg}
+func New(pg *pgstore.PgStore, reinforceThreshold, relateThreshold float64) *Dedup {
+	if reinforceThreshold <= 0 {
+		reinforceThreshold = defaultReinforceThreshold
+	}
+	if relateThreshold <= 0 {
+		relateThreshold = defaultRelateThreshold
+	}
+	return &Dedup{pg: pg, reinforceThreshold: reinforceThreshold, relateThreshold: relateThreshold}
 }
 
 func (d *Dedup) SetLLM(llm port.LLMClient) {
@@ -35,7 +44,7 @@ func (d *Dedup) Check(ctx context.Context, ownerID, content string, embedding []
 		return &domain.DedupResult{Action: domain.ActionNew}, nil
 	}
 
-	hits, err := d.pg.FindSimilar(ctx, ownerID, embedding, relateThreshold, "", 1)
+	hits, err := d.pg.FindSimilar(ctx, ownerID, embedding, d.relateThreshold, "", 1)
 	if err != nil {
 		return nil, fmt.Errorf("dedup similarity check: %w", err)
 	}
@@ -45,7 +54,7 @@ func (d *Dedup) Check(ctx context.Context, ownerID, content string, embedding []
 	}
 
 	top := hits[0]
-	if top.Score >= reinforceThreshold {
+	if top.Score >= d.reinforceThreshold {
 		if d.llm != nil {
 			contradicts, err := d.checkContradiction(ctx, content, top.Item.Content)
 			if err != nil {
@@ -98,7 +107,7 @@ NOT contradiction: different aspects of the same topic, complementary informatio
 %s
 
 Return JSON only: {"contradicts": true/false, "reason": "brief explanation"}`,
-		truncate(existingContent, 1500), truncate(newContent, 1500))
+		truncate(existingContent, contradictionTruncateLen), truncate(newContent, contradictionTruncateLen))
 
 	resp, err := d.llm.ChatJSON(ctx, []port.LLMMessage{
 		{Role: "system", Content: "You detect contradictions between knowledge items. Respond only with JSON."},

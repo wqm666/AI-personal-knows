@@ -10,6 +10,7 @@ func buildSchemaSQL(dim int) string {
 	}
 	return fmt.Sprintf(`
 CREATE EXTENSION IF NOT EXISTS vector;
+CREATE EXTENSION IF NOT EXISTS pg_trgm;
 
 CREATE TABLE IF NOT EXISTS knowledge (
     id                TEXT NOT NULL,
@@ -31,6 +32,11 @@ CREATE TABLE IF NOT EXISTS knowledge (
     status            TEXT DEFAULT 'active',
     consolidated_from TEXT[] DEFAULT '{}',
 
+    review_status     TEXT DEFAULT 'pending',
+    confidence        INTEGER DEFAULT 0,
+    review_reason     TEXT DEFAULT '',
+    reviewed_at       TIMESTAMPTZ,
+
     hit_count         INTEGER DEFAULT 0,
     useful_count      INTEGER DEFAULT 0,
     last_hit_at       TIMESTAMPTZ,
@@ -41,31 +47,44 @@ CREATE TABLE IF NOT EXISTS knowledge (
     PRIMARY KEY (owner_id, id)
 );
 
+CREATE TABLE IF NOT EXISTS search_log (
+    id               TEXT NOT NULL,
+    owner_id         TEXT NOT NULL DEFAULT 'default',
+    query            TEXT NOT NULL,
+    source           TEXT DEFAULT 'api',
+    result_count     INTEGER DEFAULT 0,
+    result_ids       TEXT[] DEFAULT '{}',
+    had_feedback     BOOLEAN DEFAULT FALSE,
+    feedback_bad_ids TEXT[] DEFAULT '{}',
+    created_at       TIMESTAMPTZ DEFAULT NOW(),
+    PRIMARY KEY (owner_id, id)
+);
+`, dim)
+}
+
+const migrationSQL = `
+-- Add columns for old tables (IF NOT EXISTS makes these idempotent)
+ALTER TABLE knowledge ADD COLUMN IF NOT EXISTS knowledge_type TEXT DEFAULT 'general';
+ALTER TABLE knowledge ADD COLUMN IF NOT EXISTS superseded_by TEXT DEFAULT '';
+ALTER TABLE knowledge ADD COLUMN IF NOT EXISTS knowledge_category TEXT DEFAULT '';
+ALTER TABLE knowledge ADD COLUMN IF NOT EXISTS review_status TEXT DEFAULT 'pending';
+ALTER TABLE knowledge ADD COLUMN IF NOT EXISTS confidence INTEGER DEFAULT 0;
+ALTER TABLE knowledge ADD COLUMN IF NOT EXISTS review_reason TEXT DEFAULT '';
+ALTER TABLE knowledge ADD COLUMN IF NOT EXISTS reviewed_at TIMESTAMPTZ;
+
+-- All indexes (safe for both new and migrated tables)
 CREATE INDEX IF NOT EXISTS idx_knowledge_owner ON knowledge(owner_id);
 CREATE INDEX IF NOT EXISTS idx_knowledge_owner_status ON knowledge(owner_id, status);
 CREATE INDEX IF NOT EXISTS idx_knowledge_owner_tags ON knowledge USING GIN(tags);
 CREATE INDEX IF NOT EXISTS idx_knowledge_owner_created ON knowledge(owner_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_knowledge_embedding ON knowledge USING hnsw (embedding vector_cosine_ops);
 CREATE INDEX IF NOT EXISTS idx_knowledge_owner_type ON knowledge(owner_id, knowledge_type);
-
-CREATE TABLE IF NOT EXISTS search_log (
-    id           TEXT NOT NULL,
-    owner_id     TEXT NOT NULL DEFAULT 'default',
-    query        TEXT NOT NULL,
-    result_count INTEGER DEFAULT 0,
-    had_feedback BOOLEAN DEFAULT FALSE,
-    created_at   TIMESTAMPTZ DEFAULT NOW(),
-    PRIMARY KEY (owner_id, id)
-);
-
-CREATE INDEX IF NOT EXISTS idx_search_log_owner_created ON search_log(owner_id, created_at DESC);
-`, dim)
-}
-
-const migrationSQL = `
-ALTER TABLE knowledge ADD COLUMN IF NOT EXISTS knowledge_type TEXT DEFAULT 'general';
-CREATE INDEX IF NOT EXISTS idx_knowledge_owner_type ON knowledge(owner_id, knowledge_type);
-ALTER TABLE knowledge ADD COLUMN IF NOT EXISTS superseded_by TEXT DEFAULT '';
-ALTER TABLE knowledge ADD COLUMN IF NOT EXISTS knowledge_category TEXT DEFAULT '';
 CREATE INDEX IF NOT EXISTS idx_knowledge_owner_category ON knowledge(owner_id, knowledge_category);
+CREATE INDEX IF NOT EXISTS idx_knowledge_owner_review ON knowledge(owner_id, review_status);
+CREATE INDEX IF NOT EXISTS idx_knowledge_title_trgm ON knowledge USING GIN(title gin_trgm_ops);
+CREATE INDEX IF NOT EXISTS idx_knowledge_content_trgm ON knowledge USING GIN(content gin_trgm_ops);
+CREATE INDEX IF NOT EXISTS idx_search_log_owner_created ON search_log(owner_id, created_at DESC);
+ALTER TABLE search_log ADD COLUMN IF NOT EXISTS source TEXT DEFAULT 'api';
+ALTER TABLE search_log ADD COLUMN IF NOT EXISTS result_ids TEXT[] DEFAULT '{}';
+ALTER TABLE search_log ADD COLUMN IF NOT EXISTS feedback_bad_ids TEXT[] DEFAULT '{}';
 `
