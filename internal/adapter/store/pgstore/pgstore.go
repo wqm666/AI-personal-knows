@@ -777,6 +777,84 @@ func (s *PgStore) KnowledgeHitRanking(ctx context.Context, ownerID string, limit
 	return ranks, rows.Err()
 }
 
+// --- WorkLog ---
+
+func (s *PgStore) SaveWorkLog(ctx context.Context, w *domain.WorkLog) error {
+	_, err := s.executor(ctx).ExecContext(ctx,
+		`INSERT INTO worklog (id, owner_id, date, content, project, tags, duration, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+		w.ID, w.OwnerID, w.Date, w.Content, w.Project, pq.Array(w.Tags), w.Duration, w.CreatedAt, w.UpdatedAt)
+	return err
+}
+
+func (s *PgStore) UpdateWorkLog(ctx context.Context, w *domain.WorkLog) error {
+	_, err := s.executor(ctx).ExecContext(ctx,
+		`UPDATE worklog SET date=$3, content=$4, project=$5, tags=$6, duration=$7, updated_at=$8
+		WHERE owner_id=$1 AND id=$2`,
+		w.OwnerID, w.ID, w.Date, w.Content, w.Project, pq.Array(w.Tags), w.Duration, w.UpdatedAt)
+	return err
+}
+
+func (s *PgStore) DeleteWorkLog(ctx context.Context, ownerID, id string) error {
+	_, err := s.executor(ctx).ExecContext(ctx, `DELETE FROM worklog WHERE owner_id = $1 AND id = $2`, ownerID, id)
+	return err
+}
+
+func (s *PgStore) GetWorkLog(ctx context.Context, ownerID, id string) (*domain.WorkLog, error) {
+	w := &domain.WorkLog{}
+	err := s.executor(ctx).QueryRowContext(ctx,
+		`SELECT id, owner_id, date, content, project, tags, duration, created_at, updated_at
+		FROM worklog WHERE owner_id = $1 AND id = $2`, ownerID, id).Scan(
+		&w.ID, &w.OwnerID, &w.Date, &w.Content, &w.Project, pq.Array(&w.Tags), &w.Duration, &w.CreatedAt, &w.UpdatedAt)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	return w, err
+}
+
+func (s *PgStore) ListWorkLogs(ctx context.Context, ownerID string, dateFrom, dateTo string, offset, limit int) ([]*domain.WorkLog, error) {
+	var query string
+	var args []any
+	if dateFrom != "" && dateTo != "" {
+		query = `SELECT id, owner_id, date, content, project, tags, duration, created_at, updated_at
+			FROM worklog WHERE owner_id = $1 AND date >= $2 AND date <= $3 ORDER BY date DESC, created_at DESC LIMIT $4 OFFSET $5`
+		args = []any{ownerID, dateFrom, dateTo, limit, offset}
+	} else {
+		query = `SELECT id, owner_id, date, content, project, tags, duration, created_at, updated_at
+			FROM worklog WHERE owner_id = $1 ORDER BY date DESC, created_at DESC LIMIT $2 OFFSET $3`
+		args = []any{ownerID, limit, offset}
+	}
+
+	rows, err := s.executor(ctx).QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var logs []*domain.WorkLog
+	for rows.Next() {
+		w := &domain.WorkLog{}
+		if err := rows.Scan(&w.ID, &w.OwnerID, &w.Date, &w.Content, &w.Project, pq.Array(&w.Tags), &w.Duration, &w.CreatedAt, &w.UpdatedAt); err != nil {
+			return nil, err
+		}
+		logs = append(logs, w)
+	}
+	return logs, rows.Err()
+}
+
+func (s *PgStore) CountWorkLogs(ctx context.Context, ownerID string, dateFrom, dateTo string) (int, error) {
+	var count int
+	var err error
+	if dateFrom != "" && dateTo != "" {
+		err = s.executor(ctx).QueryRowContext(ctx,
+			`SELECT COUNT(*) FROM worklog WHERE owner_id = $1 AND date >= $2 AND date <= $3`, ownerID, dateFrom, dateTo).Scan(&count)
+	} else {
+		err = s.executor(ctx).QueryRowContext(ctx,
+			`SELECT COUNT(*) FROM worklog WHERE owner_id = $1`, ownerID).Scan(&count)
+	}
+	return count, err
+}
+
 const (
 	topQueriesLimit     = 10
 	zeroResultTermLimit = 20

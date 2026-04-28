@@ -284,6 +284,52 @@ func newAutoCaptureHandler(svc *service.Service, identity port.IdentityProvider)
 	}
 }
 
+func newWorkLogAddHandler(svc *service.Service, identity port.IdentityProvider) func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		ctx, errResult := mustIdentity(ctx, identity)
+		if errResult != nil {
+			return errResult, nil
+		}
+		args := req.GetArguments()
+		content, _ := args["content"].(string)
+		date, _ := args["date"].(string)
+		project, _ := args["project"].(string)
+		tagsStr, _ := args["tags"].(string)
+		durationF, _ := args["duration"].(float64)
+
+		if content == "" {
+			return errorResult("content is required"), nil
+		}
+
+		tags := splitComma(tagsStr)
+		w, err := svc.AddWorkLog(ctx, date, content, project, tags, int(durationF))
+		if err != nil {
+			return errorResult(err.Error()), nil
+		}
+		return jsonResult(w)
+	}
+}
+
+func newWorkLogListHandler(svc *service.Service, identity port.IdentityProvider) func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		ctx, errResult := mustIdentity(ctx, identity)
+		if errResult != nil {
+			return errResult, nil
+		}
+		args := req.GetArguments()
+		dateFrom, _ := args["date_from"].(string)
+		dateTo, _ := args["date_to"].(string)
+		limitF, _ := args["limit"].(float64)
+		limit := int(limitF)
+
+		items, total, err := svc.ListWorkLogs(ctx, dateFrom, dateTo, 0, limit)
+		if err != nil {
+			return errorResult(err.Error()), nil
+		}
+		return jsonResult(map[string]any{"items": items, "total": total})
+	}
+}
+
 func jsonResult(v any) (*mcp.CallToolResult, error) {
 	data, err := json.Marshal(v)
 	if err != nil {

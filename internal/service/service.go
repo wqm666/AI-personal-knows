@@ -1560,6 +1560,92 @@ func generateTitle(content string) string {
 	return title
 }
 
+// --- WorkLog ---
+
+func (s *Service) AddWorkLog(ctx context.Context, date, content, project string, tags []string, duration int) (*domain.WorkLog, error) {
+	identity := port.IdentityFromContext(ctx)
+	if content == "" {
+		return nil, fmt.Errorf("content is required")
+	}
+	if date == "" {
+		date = time.Now().Format("2006-01-02")
+	}
+
+	now := time.Now()
+	w := &domain.WorkLog{
+		ID:        s.idGen.Generate(),
+		OwnerID:   identity.OwnerID,
+		Date:      date,
+		Content:   content,
+		Project:   project,
+		Tags:      tags,
+		Duration:  duration,
+		CreatedAt: now,
+		UpdatedAt: now,
+	}
+	if err := s.store.SaveWorkLog(ctx, w); err != nil {
+		return nil, err
+	}
+	return w, nil
+}
+
+func (s *Service) UpdateWorkLog(ctx context.Context, id, date, content, project string, tags []string, duration int) (*domain.WorkLog, error) {
+	identity := port.IdentityFromContext(ctx)
+	existing, err := s.store.GetWorkLog(ctx, identity.OwnerID, id)
+	if err != nil {
+		return nil, err
+	}
+	if existing == nil {
+		return nil, fmt.Errorf("worklog not found")
+	}
+	if date != "" {
+		existing.Date = date
+	}
+	if content != "" {
+		existing.Content = content
+	}
+	if project != "" {
+		existing.Project = project
+	}
+	if tags != nil {
+		existing.Tags = tags
+	}
+	if duration >= 0 {
+		existing.Duration = duration
+	}
+	existing.UpdatedAt = time.Now()
+	if err := s.store.UpdateWorkLog(ctx, existing); err != nil {
+		return nil, err
+	}
+	return existing, nil
+}
+
+func (s *Service) DeleteWorkLog(ctx context.Context, id string) error {
+	identity := port.IdentityFromContext(ctx)
+	return s.store.DeleteWorkLog(ctx, identity.OwnerID, id)
+}
+
+func (s *Service) ListWorkLogs(ctx context.Context, dateFrom, dateTo string, offset, limit int) ([]*domain.WorkLog, int, error) {
+	identity := port.IdentityFromContext(ctx)
+	if limit <= 0 {
+		limit = 50
+	}
+	items, err := s.store.ListWorkLogs(ctx, identity.OwnerID, dateFrom, dateTo, offset, limit)
+	if err != nil {
+		return nil, 0, err
+	}
+	total, err := s.store.CountWorkLogs(ctx, identity.OwnerID, dateFrom, dateTo)
+	if err != nil {
+		return nil, 0, err
+	}
+	return items, total, nil
+}
+
+func (s *Service) GetWorkLog(ctx context.Context, id string) (*domain.WorkLog, error) {
+	identity := port.IdentityFromContext(ctx)
+	return s.store.GetWorkLog(ctx, identity.OwnerID, id)
+}
+
 const (
 	maxChunkSize         = 3000
 	maxTitleRunes        = 80

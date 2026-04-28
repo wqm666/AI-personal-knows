@@ -59,6 +59,19 @@ CREATE TABLE IF NOT EXISTS search_log (
     created_at       TIMESTAMPTZ DEFAULT NOW(),
     PRIMARY KEY (owner_id, id)
 );
+CREATE TABLE IF NOT EXISTS worklog (
+    id         TEXT NOT NULL,
+    owner_id   TEXT NOT NULL DEFAULT 'default',
+    date       TEXT NOT NULL,
+    content    TEXT NOT NULL,
+    project    TEXT DEFAULT '',
+    tags       TEXT[] DEFAULT '{}',
+    duration   INTEGER DEFAULT 0,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
+    PRIMARY KEY (owner_id, id)
+);
+CREATE INDEX IF NOT EXISTS idx_worklog_owner_date ON worklog(owner_id, date DESC);
 `, dim)
 }
 

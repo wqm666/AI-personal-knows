@@ -55,6 +55,8 @@ func (r *Router) Handler() http.Handler {
 	mux.HandleFunc("/api/monitor/ranking", r.withIdentity(r.handleHitRanking))
 	mux.HandleFunc("/api/monitor/logs", r.withIdentity(r.handleMonitorLogs))
 	mux.HandleFunc("/api/monitor/bad_recall", r.withIdentity(r.handleBadRecall))
+	mux.HandleFunc("/api/worklog/", r.withIdentity(r.handleWorkLogItem))
+	mux.HandleFunc("/api/worklog", r.withIdentity(r.handleWorkLog))
 
 	return mux
 }
@@ -593,6 +595,95 @@ func (r *Router) handleBulkImport(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	writeJSON(w, result)
+}
+
+func (r *Router) handleWorkLog(w http.ResponseWriter, req *http.Request) {
+	switch req.Method {
+	case http.MethodGet:
+		dateFrom := req.URL.Query().Get("from")
+		dateTo := req.URL.Query().Get("to")
+		offset, _ := strconv.Atoi(req.URL.Query().Get("offset"))
+		limit, _ := strconv.Atoi(req.URL.Query().Get("limit"))
+		items, total, err := r.svc.ListWorkLogs(req.Context(), dateFrom, dateTo, offset, limit)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		writeJSON(w, map[string]any{"items": items, "total": total})
+
+	case http.MethodPost:
+		var body struct {
+			Date     string   `json:"date"`
+			Content  string   `json:"content"`
+			Project  string   `json:"project"`
+			Tags     []string `json:"tags"`
+			Duration int      `json:"duration"`
+		}
+		if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid JSON")
+			return
+		}
+		item, err := r.svc.AddWorkLog(req.Context(), body.Date, body.Content, body.Project, body.Tags, body.Duration)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		writeJSON(w, item)
+
+	default:
+		w.WriteHeader(http.StatusMethodNotAllowed)
+	}
+}
+
+func (r *Router) handleWorkLogItem(w http.ResponseWriter, req *http.Request) {
+	id := strings.TrimPrefix(req.URL.Path, "/api/worklog/")
+	if id == "" {
+		writeError(w, http.StatusBadRequest, "id required")
+		return
+	}
+
+	switch req.Method {
+	case http.MethodGet:
+		item, err := r.svc.GetWorkLog(req.Context(), id)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		if item == nil {
+			writeError(w, http.StatusNotFound, "not found")
+			return
+		}
+		writeJSON(w, item)
+
+	case http.MethodPut:
+		var body struct {
+			Date     string   `json:"date"`
+			Content  string   `json:"content"`
+			Project  string   `json:"project"`
+			Tags     []string `json:"tags"`
+			Duration int      `json:"duration"`
+		}
+		if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid JSON")
+			return
+		}
+		item, err := r.svc.UpdateWorkLog(req.Context(), id, body.Date, body.Content, body.Project, body.Tags, body.Duration)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		writeJSON(w, item)
+
+	case http.MethodDelete:
+		if err := r.svc.DeleteWorkLog(req.Context(), id); err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		writeJSON(w, map[string]bool{"deleted": true})
+
+	default:
+		w.WriteHeader(http.StatusMethodNotAllowed)
+	}
 }
 
 func extractDocxText(data []byte) (string, error) {

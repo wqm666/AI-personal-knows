@@ -1,4 +1,4 @@
-FROM golang:1.23-alpine AS builder
+FROM golang:1.24-alpine AS builder
 
 WORKDIR /app
 COPY go.mod go.sum ./
@@ -8,11 +8,9 @@ COPY . .
 RUN CGO_ENABLED=0 go build -o personal-know ./cmd/server/
 
 FROM alpine:3.20
-RUN apk add --no-cache ca-certificates tzdata && \
-    adduser -D -h /app appuser
+RUN sed -i 's|dl-cdn.alpinelinux.org|mirrors.aliyun.com|g' /etc/apk/repositories && \
+    apk add --no-cache ca-certificates tzdata
 WORKDIR /app
 COPY --from=builder /app/personal-know .
-RUN chown appuser:appuser ./personal-know
-USER appuser
 EXPOSE 8081
 CMD ["./personal-know"]

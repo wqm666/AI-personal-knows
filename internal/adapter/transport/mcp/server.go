@@ -84,4 +84,22 @@ Actions:
 		mcp.WithDescription("Trigger background knowledge maintenance tasks: link_discovery, consolidation, decay, tag_cluster. Run all if no tasks specified."),
 		mcp.WithString("tasks", mcp.Description("Comma-separated task names to run. Empty = run all.")),
 	), newMaintainHandler(svc, identity))
+
+	s.AddTool(mcp.NewTool("worklog_add",
+		mcp.WithDescription(`Record a work item to the daily work log. Call this proactively when the conversation involves completing a task, fixing a bug, implementing a feature, attending a meeting, or any work activity worth recording.
+
+The work log serves as a data source for daily/weekly reports. Record WHAT was done, not HOW — keep it concise but specific.`),
+		mcp.WithString("content", mcp.Required(), mcp.Description("What was done — concise description of the work item")),
+		mcp.WithString("date", mcp.Description("Date in YYYY-MM-DD format. Default: today")),
+		mcp.WithString("project", mcp.Description("Project or module name")),
+		mcp.WithString("tags", mcp.Description("Comma-separated tags")),
+		mcp.WithNumber("duration", mcp.Description("Time spent in minutes")),
+	), newWorkLogAddHandler(svc, identity))
+
+	s.AddTool(mcp.NewTool("worklog_list",
+		mcp.WithDescription("List work log entries. Can filter by date range. Use this to review what was done on a specific day or period."),
+		mcp.WithString("date_from", mcp.Description("Start date YYYY-MM-DD")),
+		mcp.WithString("date_to", mcp.Description("End date YYYY-MM-DD")),
+		mcp.WithNumber("limit", mcp.Description("Max items, default 50")),
+	), newWorkLogListHandler(svc, identity))
 }

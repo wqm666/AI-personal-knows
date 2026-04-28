@@ -163,11 +163,11 @@ textarea { resize: vertical; min-height: 100px; }
   <nav class="sidebar">
     <h1>📚 <span>Know</span></h1>
     <a class="nav-item active" data-page="list">知识审核</a>
-    <a class="nav-item" data-page="add">手动录入</a>
-    <a class="nav-item" data-page="upload">文件上传</a>
+    <a class="nav-item" data-page="worklog">工作日志</a>
     <a class="nav-item" data-page="tags">标签云</a>
     <a class="nav-item" data-page="monitor">调用监控</a>
     <a class="nav-item" data-page="maintain">维护面板</a>
+    <a class="nav-item" data-page="input">录入知识</a>
   </nav>
 
   <div class="main">
@@ -216,10 +216,10 @@ textarea { resize: vertical; min-height: 100px; }
       </div>
     </div>
 
-    <!-- Add Knowledge -->
-    <div id="page-add" class="hidden">
+    <!-- Input Knowledge (merged) -->
+    <div id="page-input" class="hidden">
       <div class="card">
-        <h2 style="margin-bottom:16px;">手动录入知识</h2>
+        <h2 style="margin-bottom:16px;">手动录入</h2>
         <div class="form-group">
           <label>标题</label>
           <input id="add-title" placeholder="知识标题（可留空自动生成）" />
@@ -234,12 +234,9 @@ textarea { resize: vertical; min-height: 100px; }
         </div>
         <button class="btn btn-primary" onclick="addKnowledge()">保存</button>
       </div>
-    </div>
 
-    <!-- File Upload -->
-    <div id="page-upload" class="hidden">
       <div class="card">
-        <h2 style="margin-bottom:16px;">文件上传</h2>
+        <h2 style="margin-bottom:16px;">文件导入</h2>
         <div class="upload-zone" id="upload-zone" onclick="document.getElementById('file-input').click()">
           <input type="file" id="file-input" accept=".txt,.md,.json,.csv,.pdf,.docx" onchange="handleFileSelect(event)" />
           <p style="font-size:16px;margin-bottom:8px;">点击或拖拽文件到此处</p>
@@ -253,6 +250,61 @@ textarea { resize: vertical; min-height: 100px; }
           </select>
         </div>
         <div id="upload-result" class="hidden" style="margin-top:16px;padding:12px;background:#f0fdf4;border-radius:var(--radius);"></div>
+      </div>
+    </div>
+
+    <!-- WorkLog -->
+    <div id="page-worklog" class="hidden">
+      <div class="card">
+        <div class="card-header">
+          <h2>工作日志</h2>
+          <button class="btn btn-outline btn-sm" onclick="showAddWorkLog()">+ 记录</button>
+        </div>
+
+        <div style="display:flex;gap:8px;align-items:center;margin-bottom:16px;padding:10px 14px;background:#f9fafb;border-radius:var(--radius);">
+          <span style="font-size:13px;color:var(--text-secondary);white-space:nowrap;">日期范围</span>
+          <input type="date" id="wl-date-from" style="width:auto;" />
+          <span style="color:var(--text-secondary);">—</span>
+          <input type="date" id="wl-date-to" style="width:auto;" />
+          <button class="btn btn-primary btn-sm" onclick="loadWorkLogs()">查询</button>
+          <button class="btn btn-outline btn-sm" onclick="document.getElementById('wl-date-from').value='';document.getElementById('wl-date-to').value='';loadWorkLogs()">全部</button>
+          <span style="flex:1;"></span>
+          <button class="btn btn-outline btn-sm" id="wl-batch-btn" onclick="enterWlBatchMode()">批量操作</button>
+          <div id="wl-batch-actions" style="display:none;gap:6px;align-items:center;">
+            <span style="font-size:13px;color:var(--text-secondary);">已选 <strong id="wl-selected-count">0</strong> 条</span>
+            <button class="btn btn-sm btn-danger" onclick="wlBatchDelete()">批量删除</button>
+            <button class="btn btn-sm btn-outline" onclick="exitWlBatchMode()">取消</button>
+          </div>
+          <span style="flex:1;"></span>
+          <span id="wl-summary" style="font-size:13px;color:var(--text-secondary);"></span>
+        </div>
+
+        <div id="wl-add-form" class="hidden" style="padding:16px;background:#eff6ff;border-radius:var(--radius);margin-bottom:16px;border:1px solid var(--primary-light);">
+          <div style="display:flex;gap:12px;flex-wrap:wrap;">
+            <div style="flex:2;min-width:200px;">
+              <label style="font-size:13px;font-weight:500;">内容 *</label>
+              <textarea id="wl-add-content" rows="2" placeholder="今天做了什么..."></textarea>
+            </div>
+            <div style="flex:1;min-width:120px;">
+              <label style="font-size:13px;font-weight:500;">项目</label>
+              <input id="wl-add-project" placeholder="项目名" />
+            </div>
+            <div style="flex:1;min-width:120px;">
+              <label style="font-size:13px;font-weight:500;">标签</label>
+              <input id="wl-add-tags" placeholder="逗号分隔" />
+            </div>
+            <div style="width:80px;">
+              <label style="font-size:13px;font-weight:500;">耗时(分)</label>
+              <input id="wl-add-duration" type="number" placeholder="0" />
+            </div>
+          </div>
+          <div style="margin-top:10px;display:flex;gap:8px;">
+            <button class="btn btn-primary btn-sm" onclick="addWorkLog()">保存</button>
+            <button class="btn btn-outline btn-sm" onclick="document.getElementById('wl-add-form').classList.add('hidden')">取消</button>
+          </div>
+        </div>
+
+        <div id="worklog-list"></div>
       </div>
     </div>
 
@@ -361,6 +413,7 @@ document.querySelectorAll('.nav-item').forEach(el => {
     document.getElementById('page-' + page).classList.remove('hidden');
     currentPage = page;
     if (page === 'list') loadList();
+    if (page === 'worklog') loadWorkLogs();
     if (page === 'tags') loadTags();
     if (page === 'monitor') loadMonitor();
     if (page === 'maintain') loadMaintain();
@@ -1055,6 +1108,170 @@ async function markBadRecall(searchLogId, badItemId, btnEl) {
     span.classList.add('bad');
     btnEl.remove();
   }
+}
+
+// WorkLog
+function fmtDuration(min) {
+  if (!min || min <= 0) return '';
+  if (min >= 60) return Math.floor(min/60) + 'h' + (min%60 ? min%60 + 'm' : '');
+  return min + 'm';
+}
+
+async function loadWorkLogs() {
+  const from = document.getElementById('wl-date-from').value;
+  const to = document.getElementById('wl-date-to').value;
+  let url = '/api/worklog?limit=200';
+  if (from) url += '&from=' + from;
+  if (to) url += '&to=' + to;
+  const data = await api(url);
+  const items = data.items || [];
+  const el = document.getElementById('worklog-list');
+
+  const totalMin = items.reduce((s, i) => s + (i.Duration || 0), 0);
+  document.getElementById('wl-summary').textContent = items.length > 0
+    ? '共 ' + items.length + ' 条，合计 ' + fmtDuration(totalMin)
+    : '';
+
+  if (items.length === 0) {
+    el.innerHTML = '<p style="padding:20px;text-align:center;color:var(--text-secondary);">暂无工作日志</p>';
+    return;
+  }
+
+  let html = '<table style="width:100%;border-collapse:collapse;font-size:14px;">';
+  html += '<thead><tr style="border-bottom:2px solid var(--border);text-align:left;">';
+  html += '<th class="wl-batch-col" style="padding:8px 4px;width:36px;display:none;"><input type="checkbox" id="wl-select-all" onchange="wlToggleAll(this.checked)" /></th>';
+  html += '<th style="padding:8px 6px;width:100px;">日期</th>';
+  html += '<th style="padding:8px 6px;width:55px;">时间</th>';
+  html += '<th style="padding:8px 6px;">内容</th>';
+  html += '<th style="padding:8px 6px;width:70px;">耗时</th>';
+  html += '<th style="padding:8px 6px;width:120px;">标签</th>';
+  html += '<th style="padding:8px 6px;width:50px;"></th>';
+  html += '</tr></thead><tbody>';
+
+  let prevDate = '';
+  for (const w of items) {
+    const dateCell = w.Date !== prevDate ? esc(w.Date) : '';
+    prevDate = w.Date;
+    const timeStr = w.CreatedAt ? new Date(w.CreatedAt).toLocaleTimeString('zh-CN', {hour:'2-digit',minute:'2-digit'}) : '';
+    const contentShort = w.Content.length > 50 ? esc(w.Content.substring(0, 50)) + '...' : esc(w.Content);
+    const tags = (w.Tags || []).slice(0, 2).map(t => '<span class="tag">' + esc(t) + '</span>').join('');
+    const dur = w.Duration > 0 ? fmtDuration(w.Duration) : '';
+
+    html += '<tr style="border-bottom:1px solid var(--border);cursor:pointer;" onclick="showWorkLogDetail(\'' + esc(w.ID) + '\')">';
+    html += '<td class="wl-batch-col" style="padding:8px 4px;display:none;" onclick="event.stopPropagation();"><input type="checkbox" data-wid="' + esc(w.ID) + '" onchange="wlToggleItem(this)" /></td>';
+    html += '<td style="padding:8px 6px;font-weight:' + (dateCell ? '600;color:var(--primary)' : 'normal;color:transparent') + ';">' + (dateCell || prevDate) + '</td>';
+    html += '<td style="padding:8px 6px;font-size:12px;color:var(--text-secondary);">' + timeStr + '</td>';
+    html += '<td style="padding:8px 6px;">' + contentShort + '</td>';
+    html += '<td style="padding:8px 6px;color:var(--text-secondary);font-size:13px;">' + dur + '</td>';
+    html += '<td style="padding:8px 6px;">' + tags + '</td>';
+    html += '<td style="padding:8px 6px;" onclick="event.stopPropagation();"><button class="op-btn op-delete" title="删除" onclick="deleteWorkLog(\'' + esc(w.ID) + '\')">🗑</button></td>';
+    html += '</tr>';
+  }
+  html += '</tbody></table>';
+  el.innerHTML = html;
+  if (wlBatchMode) document.querySelectorAll('.wl-batch-col').forEach(el => el.style.display = '');
+}
+
+function showAddWorkLog() {
+  document.getElementById('wl-add-form').classList.remove('hidden');
+  document.getElementById('wl-add-content').focus();
+}
+
+async function addWorkLog() {
+  const content = document.getElementById('wl-add-content').value.trim();
+  if (!content) { toast('内容不能为空', 'error'); return; }
+  const project = document.getElementById('wl-add-project').value.trim();
+  const tagsStr = document.getElementById('wl-add-tags').value.trim();
+  const tags = tagsStr ? tagsStr.split(',').map(t => t.trim()).filter(Boolean) : [];
+  const duration = parseInt(document.getElementById('wl-add-duration').value) || 0;
+
+  const result = await api('/api/worklog', {
+    method: 'POST',
+    body: JSON.stringify({ content, project, tags, duration })
+  });
+  if (result.error) { toast(result.error, 'error'); return; }
+  toast('已记录');
+  document.getElementById('wl-add-content').value = '';
+  document.getElementById('wl-add-project').value = '';
+  document.getElementById('wl-add-tags').value = '';
+  document.getElementById('wl-add-duration').value = '';
+  document.getElementById('wl-add-form').classList.add('hidden');
+  loadWorkLogs();
+}
+
+let wlBatchMode = false;
+const wlSelectedIds = new Set();
+
+function enterWlBatchMode() {
+  wlBatchMode = true;
+  wlSelectedIds.clear();
+  document.querySelectorAll('.wl-batch-col').forEach(el => el.style.display = '');
+  document.getElementById('wl-batch-btn').style.display = 'none';
+  document.getElementById('wl-batch-actions').style.display = 'flex';
+  document.getElementById('wl-selected-count').textContent = '0';
+}
+
+function exitWlBatchMode() {
+  wlBatchMode = false;
+  wlSelectedIds.clear();
+  document.querySelectorAll('.wl-batch-col').forEach(el => el.style.display = 'none');
+  document.querySelectorAll('.wl-batch-col input[type=checkbox]').forEach(cb => cb.checked = false);
+  document.getElementById('wl-batch-btn').style.display = '';
+  document.getElementById('wl-batch-actions').style.display = 'none';
+}
+
+function wlToggleItem(cb) {
+  const id = cb.dataset.wid;
+  if (cb.checked) wlSelectedIds.add(id); else wlSelectedIds.delete(id);
+  document.getElementById('wl-selected-count').textContent = wlSelectedIds.size;
+}
+
+function wlToggleAll(checked) {
+  document.querySelectorAll('#worklog-list input[type=checkbox][data-wid]').forEach(cb => {
+    cb.checked = checked;
+    if (checked) wlSelectedIds.add(cb.dataset.wid); else wlSelectedIds.delete(cb.dataset.wid);
+  });
+  document.getElementById('wl-selected-count').textContent = wlSelectedIds.size;
+}
+
+async function wlBatchDelete() {
+  if (wlSelectedIds.size === 0) { toast('请先选择', 'error'); return; }
+  if (!confirm('确定删除 ' + wlSelectedIds.size + ' 条工作日志？')) return;
+  let ok = 0;
+  for (const id of wlSelectedIds) {
+    const r = await api('/api/worklog/' + id, { method: 'DELETE' });
+    if (!r.error) ok++;
+  }
+  toast('已删除 ' + ok + ' 条');
+  exitWlBatchMode();
+  loadWorkLogs();
+}
+
+async function showWorkLogDetail(id) {
+  const item = await api('/api/worklog/' + id);
+  if (!item || item.error) { toast('加载失败', 'error'); return; }
+
+  const tags = (item.Tags || []).map(t => '<span class="tag">' + esc(t) + '</span>').join('');
+  const dur = item.Duration > 0 ? fmtDuration(item.Duration) : '未记录';
+
+  document.getElementById('detail-content').innerHTML =
+    '<h2>' + esc(item.Content.substring(0, 60)) + '</h2>' +
+    '<div style="margin-bottom:12px;">' + tags + '</div>' +
+    '<div style="font-size:13px;color:var(--text-secondary);margin-bottom:12px;">' +
+      '日期: ' + esc(item.Date) + ' | 项目: ' + (item.Project || '—') + ' | 耗时: ' + dur +
+    '</div>' +
+    '<div class="md-content">' + renderMarkdown(item.Content) + '</div>' +
+    '<div style="display:flex;gap:8px;">' +
+      '<button class="btn btn-danger btn-sm" onclick="deleteWorkLog(\'' + esc(item.ID) + '\');closeDetail();">删除</button>' +
+    '</div>';
+  document.getElementById('detail-panel').classList.add('open');
+}
+
+async function deleteWorkLog(id) {
+  if (!confirm('确定删除？')) return;
+  await api('/api/worklog/' + id, { method: 'DELETE' });
+  toast('已删除');
+  loadWorkLogs();
 }
 
 // Export & Import

@@ -49,5 +49,13 @@ type Store interface {
 	MarkSearchBadFeedback(ctx context.Context, ownerID, logID, badItemID string) error
 	KnowledgeHitRanking(ctx context.Context, ownerID string, limit int) ([]domain.KnowledgeHitRank, error)
 
+	// WorkLog
+	SaveWorkLog(ctx context.Context, w *domain.WorkLog) error
+	UpdateWorkLog(ctx context.Context, w *domain.WorkLog) error
+	DeleteWorkLog(ctx context.Context, ownerID, id string) error
+	GetWorkLog(ctx context.Context, ownerID, id string) (*domain.WorkLog, error)
+	ListWorkLogs(ctx context.Context, ownerID string, dateFrom, dateTo string, offset, limit int) ([]*domain.WorkLog, error)
+	CountWorkLogs(ctx context.Context, ownerID string, dateFrom, dateTo string) (int, error)
+
 	Close() error
 }
