@@ -147,6 +147,7 @@ Check for:
 2. CONSISTENCY: Does it contradict existing approved knowledge above?
 3. COMPLETENESS: Enough context to be useful standalone?
 4. VALUE: Worth storing long-term, or too trivial/ephemeral?
+5. STRUCTURE: For "procedure" type, verify steps are ordered, each step has a concrete action (not vague advice), and the workflow is reusable across similar situations.
 
 List any specific issues found in the "issues" array.`)
 

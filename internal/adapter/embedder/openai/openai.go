@@ -19,14 +19,25 @@ type Embedder struct {
 	client  *http.Client
 }
 
-func New(baseURL, apiKey, model string, timeoutSec ...int) *Embedder {
+type EmbedderOpts struct {
+	TimeoutSec int
+	Dimension  int
+}
+
+func New(baseURL, apiKey, model string, opts ...EmbedderOpts) *Embedder {
 	dim := 1536
 	if model == "text-embedding-3-large" {
 		dim = 3072
 	}
 	timeout := 30 * time.Second
-	if len(timeoutSec) > 0 && timeoutSec[0] > 0 {
-		timeout = time.Duration(timeoutSec[0]) * time.Second
+	if len(opts) > 0 {
+		o := opts[0]
+		if o.TimeoutSec > 0 {
+			timeout = time.Duration(o.TimeoutSec) * time.Second
+		}
+		if o.Dimension > 0 {
+			dim = o.Dimension
+		}
 	}
 	return &Embedder{
 		baseURL: baseURL,

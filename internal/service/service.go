@@ -577,7 +577,7 @@ Session content:
 Extract knowledge as a JSON array. Each item has:
 - "title": concise title
 - "content": detailed description with context and solution
-- "knowledge_type": one of "pitfall" (bugs/traps encountered), "decision" (tech choices made), "faq" (common questions answered)
+- "knowledge_type": one of "pitfall" (bugs/traps encountered), "decision" (tech choices made), "faq" (common questions answered), "procedure" (step-by-step operational workflow extracted from debugging/deployment/troubleshooting process)
 - "tags": relevant keyword tags as string array
 
 Rules:
@@ -743,7 +743,7 @@ func (s *Service) AutoCapture(ctx context.Context, conversation, projectCtx stri
 
 func categoryFromType(knowledgeType string) string {
 	switch knowledgeType {
-	case domain.TypePreference, domain.TypeThinking, domain.TypeLesson, domain.TypeDecision, domain.TypePitfall:
+	case domain.TypePreference, domain.TypeThinking, domain.TypeLesson, domain.TypeDecision, domain.TypePitfall, domain.TypeProcedure:
 		return domain.CategorySubjective
 	case domain.TypeBusiness, domain.TypeArchitecture, domain.TypeFact, domain.TypeFAQ:
 		return domain.CategoryObjective
@@ -873,7 +873,7 @@ Focus on the WHY behind decisions, not just WHAT was decided.
 Extract as JSON array, each item:
 - "title": concise title
 - "content": detailed description, must include reasoning/context/motivation
-- "knowledge_type": one of "preference" (personal style/preference), "thinking" (reasoning process), "lesson" (hard-won lesson/pitfall), "decision" (technical choice with rationale)
+- "knowledge_type": one of "preference" (personal style/preference), "thinking" (reasoning process), "lesson" (hard-won lesson/pitfall), "decision" (technical choice with rationale), "procedure" (step-by-step workflow the user followed to accomplish a task)
 - "knowledge_category": "subjective"
 - "tags": relevant keyword tags as string array
 
@@ -914,7 +914,7 @@ Focus on business rules, architecture facts, and reusable technical details.
 Extract as JSON array, each item:
 - "title": concise title
 - "content": detailed description with complete context
-- "knowledge_type": one of "business" (business rule/workflow/domain logic), "architecture" (system design/component relationships), "fact" (technical fact/configuration/parameter), "faq" (common question with answer)
+- "knowledge_type": one of "business" (business rule/workflow/domain logic), "architecture" (system design/component relationships), "fact" (technical fact/configuration/parameter), "faq" (common question with answer), "procedure" (reusable step-by-step operational process or checklist)
 - "knowledge_category": "objective"
 - "tags": relevant keyword tags as string array
 
@@ -1322,6 +1322,128 @@ func (s *Service) DeleteKnowledge(ctx context.Context, id string) error {
 	return s.store.Delete(ctx, identity.OwnerID, id)
 }
 
+type ExportData struct {
+	Version  string       `json:"version"`
+	ExportAt string       `json:"export_at"`
+	Total    int          `json:"total"`
+	Items    []ExportItem `json:"items"`
+}
+
+type ExportItem struct {
+	Title             string   `json:"title"`
+	Content           string   `json:"content"`
+	Summary           string   `json:"summary,omitempty"`
+	Source            string   `json:"source"`
+	SourceRef         string   `json:"source_ref,omitempty"`
+	KnowledgeType     string   `json:"knowledge_type"`
+	KnowledgeCategory string   `json:"knowledge_category,omitempty"`
+	Tags              []string `json:"tags"`
+	Status            string   `json:"status"`
+	ReviewStatus      string   `json:"review_status"`
+	Confidence        int      `json:"confidence"`
+	HitCount          int      `json:"hit_count"`
+	UsefulCount       int      `json:"useful_count"`
+	CreatedAt         string   `json:"created_at"`
+}
+
+func (s *Service) Export(ctx context.Context) (*ExportData, error) {
+	identity := port.IdentityFromContext(ctx)
+
+	total, err := s.store.Count(ctx, identity.OwnerID)
+	if err != nil {
+		return nil, err
+	}
+
+	var allItems []ExportItem
+	for offset := 0; offset < total; offset += exportBatchSize {
+		items, err := s.store.List(ctx, identity.OwnerID, offset, exportBatchSize)
+		if err != nil {
+			return nil, err
+		}
+		for _, k := range items {
+			allItems = append(allItems, ExportItem{
+				Title:             k.Title,
+				Content:           k.Content,
+				Summary:           k.Summary,
+				Source:            k.Source,
+				SourceRef:         k.SourceRef,
+				KnowledgeType:     k.KnowledgeType,
+				KnowledgeCategory: k.KnowledgeCategory,
+				Tags:              k.Tags,
+				Status:            k.Status,
+				ReviewStatus:      k.ReviewStatus,
+				Confidence:        k.Confidence,
+				HitCount:          k.HitCount,
+				UsefulCount:       k.UsefulCount,
+				CreatedAt:         k.CreatedAt.Format(time.RFC3339),
+			})
+		}
+	}
+
+	return &ExportData{
+		Version:  "1.0",
+		ExportAt: time.Now().Format(time.RFC3339),
+		Total:    len(allItems),
+		Items:    allItems,
+	}, nil
+}
+
+type BulkImportResult struct {
+	Total    int `json:"total"`
+	Imported int `json:"imported"`
+	Skipped  int `json:"skipped"`
+	Failed   int `json:"failed"`
+}
+
+func (s *Service) BulkImport(ctx context.Context, data *ExportData) (*BulkImportResult, error) {
+	result := &BulkImportResult{Total: len(data.Items)}
+	identity := port.IdentityFromContext(ctx)
+
+	for _, item := range data.Items {
+		tags := item.Tags
+		if tags == nil {
+			tags = []string{}
+		}
+
+		saveResult, err := s.Save(ctx, item.Title, item.Content, item.Source, item.SourceRef, tags)
+		if err != nil {
+			slog.Warn("bulk import item failed", "title", item.Title, "error", err)
+			result.Failed++
+			continue
+		}
+
+		if !saveResult.Saved {
+			result.Skipped++
+			continue
+		}
+
+		if item.KnowledgeType != "" || item.KnowledgeCategory != "" {
+			if existing, err := s.store.Get(ctx, identity.OwnerID, saveResult.ID); err == nil && existing != nil {
+				if item.KnowledgeType != "" {
+					existing.KnowledgeType = item.KnowledgeType
+				}
+				if item.KnowledgeCategory != "" {
+					existing.KnowledgeCategory = item.KnowledgeCategory
+				}
+				existing.UpdatedAt = time.Now()
+				if err := s.store.Update(ctx, existing); err != nil {
+					slog.Warn("bulk import: update type/category failed", "id", saveResult.ID, "error", err)
+				}
+			}
+		}
+
+		if item.ReviewStatus == domain.ReviewApproved {
+			if err := s.store.UpdateReviewStatus(ctx, identity.OwnerID, saveResult.ID, domain.ReviewApproved, item.Confidence, "imported as approved"); err != nil {
+				slog.Warn("bulk import: update review status failed", "id", saveResult.ID, "error", err)
+			}
+		}
+
+		result.Imported++
+	}
+
+	return result, nil
+}
+
 // Stats returns knowledge base statistics.
 func (s *Service) Stats(ctx context.Context) (map[string]any, error) {
 	identity := port.IdentityFromContext(ctx)
@@ -1452,6 +1574,7 @@ const (
 
 	maxBackfillItems = 1000
 	maxContentSize   = 1 << 20 // 1 MB
+	exportBatchSize  = 500
 
 	defaultPendingLimit    = 20
 	defaultSearchLogsLimit = 50

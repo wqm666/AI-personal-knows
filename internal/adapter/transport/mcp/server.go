@@ -26,7 +26,7 @@ func registerTools(s *server.MCPServer, svc *service.Service, identity port.Iden
 		mcp.WithString("tags", mcp.Description("Comma-separated tags")),
 		mcp.WithString("source", mcp.Description("Source: conversation / document / manual")),
 		mcp.WithString("source_ref", mcp.Description("Source reference")),
-		mcp.WithString("knowledge_type", mcp.Description("Knowledge type: pitfall / decision / faq / general")),
+		mcp.WithString("knowledge_type", mcp.Description("Knowledge type: pitfall / decision / faq / general / procedure (step-by-step operational workflow)")),
 	), newSaveHandler(svc, identity))
 
 	s.AddTool(mcp.NewTool("note_search",
@@ -53,7 +53,7 @@ func registerTools(s *server.MCPServer, svc *service.Service, identity port.Iden
 		mcp.WithString("title", mcp.Description("New title")),
 		mcp.WithString("content", mcp.Description("New content")),
 		mcp.WithString("tags", mcp.Description("New comma-separated tags (replaces existing)")),
-		mcp.WithString("knowledge_type", mcp.Description("Knowledge type: pitfall / decision / faq / general")),
+		mcp.WithString("knowledge_type", mcp.Description("Knowledge type: pitfall / decision / faq / general / procedure (step-by-step operational workflow)")),
 	), newUpdateHandler(svc, identity))
 
 	s.AddTool(mcp.NewTool("note_auto_capture",

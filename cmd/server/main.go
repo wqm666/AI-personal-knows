@@ -64,7 +64,10 @@ func main() {
 	// --- Embedder ---
 	var embedder port.Embedder
 	if cfg.LLM.BaseURL != "" && cfg.LLM.EmbeddingModel != "" {
-		embedder = openaiembed.New(cfg.LLM.BaseURL, cfg.LLM.APIKey, cfg.LLM.EmbeddingModel, cfg.LLM.EmbedTimeoutSeconds)
+		embedder = openaiembed.New(cfg.LLM.BaseURL, cfg.LLM.APIKey, cfg.LLM.EmbeddingModel, openaiembed.EmbedderOpts{
+			TimeoutSec: cfg.LLM.EmbedTimeoutSeconds,
+			Dimension:  cfg.LLM.EmbeddingDimension,
+		})
 		slog.Info("embedder initialized", "model", cfg.LLM.EmbeddingModel)
 	}
 

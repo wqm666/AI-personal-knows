@@ -145,6 +145,9 @@ textarea { resize: vertical; min-height: 100px; }
 .progress-bar { height: 6px; background: var(--border); border-radius: 3px; overflow: hidden; }
 .progress-bar-fill { height: 100%; border-radius: 3px; }
 
+.spinner { display: inline-block; width: 18px; height: 18px; border: 2px solid var(--border); border-top-color: var(--primary); border-radius: 50%; animation: spin .6s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
 .hidden { display: none !important; }
 
 @media (max-width: 768px) {
@@ -182,11 +185,21 @@ textarea { resize: vertical; min-height: 100px; }
           <input id="search-input" placeholder="搜索知识..." />
           <button class="btn btn-primary" onclick="doSearch()">搜索</button>
           <button class="btn btn-outline" onclick="clearSearch()">清空</button>
+          <button class="btn btn-outline" id="batch-mode-btn" onclick="enterBatchMode()">批量操作</button>
+          <div id="batch-actions" style="display:none;gap:6px;flex-wrap:wrap;align-items:center;">
+            <span style="font-size:13px;color:var(--text-secondary);">已选 <strong id="selected-count">0</strong> 条</span>
+            <button class="btn btn-sm btn-success" onclick="batchApprove()">批量通过</button>
+            <button class="btn btn-sm btn-danger" onclick="batchReject()">批量拒绝</button>
+            <button class="btn btn-sm btn-outline" onclick="exportSelected()">导出选中</button>
+            <button class="btn btn-sm btn-danger" style="opacity:.7;" onclick="batchDelete()">批量删除</button>
+            <button class="btn btn-sm btn-outline" onclick="exitBatchMode()">取消</button>
+          </div>
         </div>
 
         <table style="width:100%;border-collapse:collapse;font-size:14px;">
           <thead>
             <tr style="border-bottom:2px solid var(--border);text-align:left;">
+              <th class="export-col" style="padding:8px 4px;width:36px;display:none;"><input type="checkbox" id="select-all-cb" onchange="toggleSelectAll(this.checked)" title="全选当前页" /></th>
               <th style="padding:8px 6px;width:90px;">类型</th>
               <th style="padding:8px 6px;">标题</th>
               <th style="padding:8px 6px;width:70px;">状态</th>
@@ -228,10 +241,9 @@ textarea { resize: vertical; min-height: 100px; }
       <div class="card">
         <h2 style="margin-bottom:16px;">文件上传</h2>
         <div class="upload-zone" id="upload-zone" onclick="document.getElementById('file-input').click()">
-          <input type="file" id="file-input" accept=".txt,.md,.json,.csv" onchange="handleFileSelect(event)" />
+          <input type="file" id="file-input" accept=".txt,.md,.json,.csv,.pdf,.docx" onchange="handleFileSelect(event)" />
           <p style="font-size:16px;margin-bottom:8px;">点击或拖拽文件到此处</p>
-          <p style="font-size:13px;color:var(--text-secondary);">支持 .txt .md .json .csv（纯文本格式）</p>
-          <p style="font-size:12px;color:var(--text-secondary);margin-top:4px;">PDF 请通过 AI 工具读取后使用 MCP note_import 导入</p>
+          <p style="font-size:13px;color:var(--text-secondary);">支持 .txt .md .json .csv .pdf .docx</p>
         </div>
         <div class="form-group" style="margin-top:16px;">
           <label>分段模式</label>
@@ -294,6 +306,30 @@ textarea { resize: vertical; min-height: 100px; }
         </div>
         <ul class="task-list" id="task-list"></ul>
         <div id="maintain-result" class="hidden" style="margin-top:16px;padding:12px;background:#f0fdf4;border-radius:var(--radius);white-space:pre-wrap;font-size:13px;"></div>
+      </div>
+
+      <div class="card" style="margin-top:16px;">
+        <div class="card-header">
+          <h2>知识库迁移</h2>
+        </div>
+        <div style="display:flex;gap:16px;flex-wrap:wrap;">
+          <div style="flex:1;min-width:280px;">
+            <h3 style="font-size:15px;margin-bottom:8px;">导出</h3>
+            <p style="font-size:13px;color:var(--text-secondary);margin-bottom:12px;">在「知识审核」页面勾选要导出的知识，点击「导出选中」；或一键导出全部。</p>
+            <div style="display:flex;gap:8px;">
+              <button class="btn btn-primary" onclick="exportKnowledge()">导出全部</button>
+              <button class="btn btn-outline" onclick="goToListForExport()">去选择导出</button>
+            </div>
+          </div>
+          <div style="width:1px;background:var(--border);"></div>
+          <div style="flex:1;min-width:280px;">
+            <h3 style="font-size:15px;margin-bottom:8px;">导入</h3>
+            <p style="font-size:13px;color:var(--text-secondary);margin-bottom:12px;">导入从其他实例导出的 JSON 文件。自动去重，已有的知识会被跳过。已审核通过的知识导入后保持通过状态。</p>
+            <input type="file" id="bulk-import-input" accept=".json" style="display:none;" onchange="bulkImportFile(event)" />
+            <button class="btn btn-outline" onclick="document.getElementById('bulk-import-input').click()">选择 JSON 文件导入</button>
+            <div id="bulk-import-result" class="hidden" style="margin-top:12px;padding:12px;border-radius:var(--radius);font-size:13px;"></div>
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -363,6 +399,8 @@ function toast(msg, type = 'success') {
 let listFilter = 'all';
 let allItems = [];
 let listStats = {};
+const selectedIds = new Set();
+let exportMode = false;
 
 async function loadList() {
   try {
@@ -410,11 +448,13 @@ function renderTable() {
     pitfall: '#ef4444', decision: '#8b5cf6', faq: '#3b82f6', general: '#6b7280',
     preference: '#ec4899', thinking: '#f59e0b', lesson: '#f97316',
     business: '#10b981', architecture: '#06b6d4', fact: '#6366f1',
+    procedure: '#14b8a6',
   };
   const typeLabels = {
     pitfall: '踩坑', decision: '决策', faq: '问答', general: '通用',
     preference: '偏好', thinking: '思考', lesson: '经验',
     business: '业务', architecture: '架构', fact: '事实',
+    procedure: '流程',
   };
 
   let filtered = allItems;
@@ -458,8 +498,10 @@ function renderTable() {
     const approveBtn = isPending ? `<button class="op-btn op-approve" title="通过" onclick="event.stopPropagation();quickApprove('${esc(k.ID)}')">✓</button>` : '';
     const rejectBtn = isPending ? `<button class="op-btn op-reject" title="拒绝" onclick="event.stopPropagation();quickReject('${esc(k.ID)}')">✕</button>` : '';
 
+    const isChecked = selectedIds.has(k.ID) ? 'checked' : '';
     return `
       <tr style="border-bottom:1px solid var(--border);cursor:pointer;" onclick="showDetail('${esc(k.ID)}')">
+        <td class="export-col" style="padding:8px 4px;display:none;" onclick="event.stopPropagation();"><input type="checkbox" data-kid="${esc(k.ID)}" ${isChecked} onchange="toggleSelectItem('${esc(k.ID)}',this.checked)" /></td>
         <td style="padding:8px 6px;">${typeBadge}</td>
         <td style="padding:8px 6px;"><span style="color:var(--primary);font-weight:500;">${esc(k.Title)}</span></td>
         <td style="padding:8px 6px;">${reviewBadge}</td>
@@ -470,6 +512,7 @@ function renderTable() {
           <button class="op-btn op-view" title="查看" onclick="showDetail('${esc(k.ID)}')">👁</button>
           <button class="op-btn op-edit" title="编辑" onclick="showDetail('${esc(k.ID)}');setTimeout(()=>toggleDetailEdit(),100)">✎</button>
           ${approveBtn}${rejectBtn}
+          <button class="op-btn op-delete" title="删除" onclick="event.stopPropagation();quickDelete('${esc(k.ID)}')">🗑</button>
         </td>
       </tr>`;
   }).join('');
@@ -482,6 +525,9 @@ function renderTable() {
     phtml += `<button class="btn btn-sm ${i === cur ? 'btn-primary' : 'btn-outline'}" onclick="goPage(${i})">${i + 1}</button>`;
   }
   document.getElementById('pagination').innerHTML = phtml;
+  if (exportMode) {
+    document.querySelectorAll('.export-col').forEach(el => el.style.display = '');
+  }
 }
 
 function goPage(page) {
@@ -515,6 +561,138 @@ async function quickReject(id) {
   const result = await api('/api/review', { method: 'POST', body: JSON.stringify({ action: 'reject', id, reason }) });
   if (result.error) { toast(result.error, 'error'); return; }
   toast('已拒绝');
+  loadList();
+}
+
+function toggleSelectItem(id, checked) {
+  if (checked) selectedIds.add(id); else selectedIds.delete(id);
+  updateSelectUI();
+}
+
+function toggleSelectAll(checked) {
+  document.querySelectorAll('#knowledge-table-body input[type=checkbox][data-kid]').forEach(cb => {
+    const id = cb.dataset.kid;
+    if (checked) selectedIds.add(id); else selectedIds.delete(id);
+    cb.checked = checked;
+  });
+  updateSelectUI();
+}
+
+function updateSelectUI() {
+  document.getElementById('selected-count').textContent = selectedIds.size;
+}
+
+function enterBatchMode() {
+  exportMode = true;
+  document.querySelectorAll('.export-col').forEach(el => el.style.display = '');
+  document.getElementById('batch-mode-btn').style.display = 'none';
+  document.getElementById('batch-actions').style.display = 'flex';
+  updateSelectUI();
+}
+
+function exitBatchMode() {
+  exportMode = false;
+  selectedIds.clear();
+  document.querySelectorAll('.export-col').forEach(el => el.style.display = 'none');
+  document.querySelectorAll('.export-col input[type=checkbox]').forEach(cb => cb.checked = false);
+  document.getElementById('select-all-cb').checked = false;
+  document.getElementById('batch-mode-btn').style.display = '';
+  document.getElementById('batch-actions').style.display = 'none';
+}
+
+function goToListForExport() {
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  document.querySelector('[data-page="list"]').classList.add('active');
+  document.querySelectorAll('.main > div').forEach(p => p.classList.add('hidden'));
+  document.getElementById('page-list').classList.remove('hidden');
+  currentPage = 'list';
+  loadList().then(() => enterBatchMode());
+  toast('请勾选要导出的知识，然后点击「导出选中」');
+}
+
+async function batchApprove() {
+  if (selectedIds.size === 0) { toast('请先选择知识', 'error'); return; }
+  if (!confirm('确定批量通过 ' + selectedIds.size + ' 条知识？')) return;
+  let ok = 0, fail = 0;
+  for (const id of selectedIds) {
+    const r = await api('/api/review', { method: 'POST', body: JSON.stringify({ action: 'approve', id }) });
+    if (r.error) fail++; else ok++;
+  }
+  toast('已通过 ' + ok + ' 条' + (fail ? '，失败 ' + fail + ' 条' : ''));
+  exitBatchMode();
+  loadList();
+}
+
+async function batchReject() {
+  if (selectedIds.size === 0) { toast('请先选择知识', 'error'); return; }
+  const reason = prompt('批量拒绝原因（可留空）:') || '';
+  if (!confirm('确定批量拒绝 ' + selectedIds.size + ' 条知识？')) return;
+  let ok = 0, fail = 0;
+  for (const id of selectedIds) {
+    const r = await api('/api/review', { method: 'POST', body: JSON.stringify({ action: 'reject', id, reason }) });
+    if (r.error) fail++; else ok++;
+  }
+  toast('已拒绝 ' + ok + ' 条' + (fail ? '，失败 ' + fail + ' 条' : ''));
+  exitBatchMode();
+  loadList();
+}
+
+async function batchDelete() {
+  if (selectedIds.size === 0) { toast('请先选择知识', 'error'); return; }
+  if (!confirm('确定批量删除 ' + selectedIds.size + ' 条知识？删除后不可恢复！')) return;
+  let ok = 0, fail = 0;
+  for (const id of selectedIds) {
+    const r = await api('/api/knowledge/' + id, { method: 'DELETE' });
+    if (r.error) fail++; else ok++;
+  }
+  toast('已删除 ' + ok + ' 条' + (fail ? '，失败 ' + fail + ' 条' : ''));
+  exitBatchMode();
+  loadList();
+}
+
+function exportSelected() {
+  if (selectedIds.size === 0) { toast('请先选择要导出的知识', 'error'); return; }
+
+  const items = allItems.filter(k => selectedIds.has(k.ID)).map(k => ({
+    title: k.Title,
+    content: k.Content,
+    summary: k.Summary || '',
+    source: k.Source,
+    source_ref: k.SourceRef || '',
+    knowledge_type: k.KnowledgeType,
+    knowledge_category: k.KnowledgeCategory || '',
+    tags: k.Tags || [],
+    status: k.Status,
+    review_status: k.ReviewStatus,
+    confidence: k.Confidence || 0,
+    hit_count: k.HitCount || 0,
+    useful_count: k.UsefulCount || 0,
+    created_at: k.CreatedAt
+  }));
+
+  const data = {
+    version: '1.0',
+    export_at: new Date().toISOString(),
+    total: items.length,
+    items: items
+  };
+
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'personal-know-export-' + new Date().toISOString().slice(0,10) + '.json';
+  a.click();
+  URL.revokeObjectURL(url);
+  toast('已导出 ' + items.length + ' 条知识');
+}
+
+async function quickDelete(id) {
+  if (!confirm('确定删除这条知识？删除后不可恢复。')) return;
+  const result = await api(`/api/knowledge/${id}`, { method: 'DELETE' });
+  if (result.error) { toast(result.error, 'error'); return; }
+  toast('已删除');
+  closeDetail();
   loadList();
 }
 
@@ -680,22 +858,29 @@ function handleFileSelect(e) {
 }
 
 async function uploadFile(file) {
+  const el = document.getElementById('upload-result');
+  el.style.background = '#eff6ff';
+  el.innerHTML = '<div style="display:flex;align-items:center;gap:10px;"><span class="spinner"></span> 正在导入 <strong>' + esc(file.name) + '</strong>，请稍候...</div>';
+  el.classList.remove('hidden');
+
   const formData = new FormData();
   formData.append('file', file);
   formData.append('chunk_mode', document.getElementById('chunk-mode').value);
 
-  const res = await fetch(API + '/api/import', { method: 'POST', body: formData });
-  const result = await res.json();
-
-  const el = document.getElementById('upload-result');
-  if (result.error) {
+  try {
+    const res = await fetch(API + '/api/import', { method: 'POST', body: formData });
+    const result = await res.json();
+    if (result.error) {
+      el.style.background = '#fef2f2';
+      el.innerHTML = '<strong>上传失败:</strong> ' + esc(result.error);
+    } else {
+      el.style.background = '#f0fdf4';
+      el.innerHTML = '<strong>导入成功:</strong> ' + esc(result.file) + '<br>生成 <strong>' + result.count + '</strong> 条知识';
+    }
+  } catch (e) {
     el.style.background = '#fef2f2';
-    el.textContent = `上传失败: ${result.error}`;
-  } else {
-    el.style.background = '#f0fdf4';
-    el.innerHTML = `✅ 导入成功: ${result.file}<br>生成 ${result.count} 条知识`;
+    el.innerHTML = '<strong>网络错误:</strong> ' + esc(e.message);
   }
-  el.classList.remove('hidden');
 }
 
 // Tags
@@ -870,6 +1055,54 @@ async function markBadRecall(searchLogId, badItemId, btnEl) {
     span.classList.add('bad');
     btnEl.remove();
   }
+}
+
+// Export & Import
+async function exportKnowledge() {
+  toast('正在导出...');
+  try {
+    const res = await fetch(API + '/api/export');
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'personal-know-export-' + new Date().toISOString().slice(0,10) + '.json';
+    a.click();
+    URL.revokeObjectURL(url);
+    toast('导出完成');
+  } catch (e) {
+    toast('导出失败: ' + e.message, 'error');
+  }
+}
+
+async function bulkImportFile(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+
+  const el = document.getElementById('bulk-import-result');
+  el.style.background = '#eff6ff';
+  el.innerHTML = '<div style="display:flex;align-items:center;gap:10px;"><span class="spinner"></span> 正在导入 <strong>' + esc(file.name) + '</strong>，请稍候...</div>';
+  el.classList.remove('hidden');
+
+  const formData = new FormData();
+  formData.append('file', file);
+
+  try {
+    const res = await fetch(API + '/api/import/bulk', { method: 'POST', body: formData });
+    const result = await res.json();
+    if (result.error) {
+      el.style.background = '#fef2f2';
+      el.innerHTML = '<strong>导入失败:</strong> ' + esc(result.error);
+    } else {
+      el.style.background = '#f0fdf4';
+      el.innerHTML = '<strong>导入完成:</strong> 共 ' + result.total + ' 条，成功 ' + result.imported + ' 条，跳过(重复) ' + result.skipped + ' 条，失败 ' + result.failed + ' 条';
+      loadList();
+    }
+  } catch (e) {
+    el.style.background = '#fef2f2';
+    el.innerHTML = '<strong>网络错误:</strong> ' + esc(e.message);
+  }
+  event.target.value = '';
 }
 
 function renderMarkdown(text) {

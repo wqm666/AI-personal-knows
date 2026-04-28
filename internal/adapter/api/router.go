@@ -1,13 +1,20 @@
 package api
 
 import (
+	"bytes"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
+	"os"
+	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 
+	pdflib "github.com/ledongthuc/pdf"
+	"github.com/nguyenthenguyen/docx"
 	"github.com/personal-know/internal/domain"
 	"github.com/personal-know/internal/port"
 	"github.com/personal-know/internal/service"
@@ -18,7 +25,13 @@ type Router struct {
 	identity port.IdentityProvider
 }
 
-const defaultListLimit = 20
+const (
+	defaultListLimit  = 20
+	maxUploadSize     = 32 << 20 // 32 MB
+	maxBulkImportSize = 64 << 20 // 64 MB
+)
+
+var xmlTagRe = regexp.MustCompile(`<[^>]*>`)
 
 func NewRouter(svc *service.Service, identity port.IdentityProvider) *Router {
 	return &Router{svc: svc, identity: identity}
@@ -35,6 +48,8 @@ func (r *Router) Handler() http.Handler {
 	mux.HandleFunc("/api/feedback", r.withIdentity(r.handleFeedback))
 	mux.HandleFunc("/api/maintain", r.withIdentity(r.handleMaintain))
 	mux.HandleFunc("/api/review", r.withIdentity(r.handleReview))
+	mux.HandleFunc("/api/export", r.withIdentity(r.handleExport))
+	mux.HandleFunc("/api/import/bulk", r.withIdentity(r.handleBulkImport))
 	mux.HandleFunc("/api/stats", r.withIdentity(r.handleStats))
 	mux.HandleFunc("/api/search_log", r.withIdentity(r.handleSearchLog))
 	mux.HandleFunc("/api/monitor/ranking", r.withIdentity(r.handleHitRanking))
@@ -200,7 +215,6 @@ func (r *Router) handleImport(w http.ResponseWriter, req *http.Request) {
 
 	contentType := req.Header.Get("Content-Type")
 
-	const maxUploadSize = 32 << 20 // 32 MB
 	req.Body = http.MaxBytesReader(w, req.Body, maxUploadSize)
 	if strings.HasPrefix(contentType, "multipart/form-data") {
 		if err := req.ParseMultipartForm(maxUploadSize); err != nil {
@@ -221,8 +235,29 @@ func (r *Router) handleImport(w http.ResponseWriter, req *http.Request) {
 			return
 		}
 
+		var fileContent string
+		ext := strings.ToLower(filepath.Ext(header.Filename))
+		switch ext {
+		case ".pdf":
+			text, err := extractPDFText(data)
+			if err != nil {
+				writeError(w, http.StatusBadRequest, "parse PDF failed: "+err.Error())
+				return
+			}
+			fileContent = text
+		case ".docx":
+			text, err := extractDocxText(data)
+			if err != nil {
+				writeError(w, http.StatusBadRequest, "parse DOCX failed: "+err.Error())
+				return
+			}
+			fileContent = text
+		default:
+			fileContent = string(data)
+		}
+
 		chunkMode := req.FormValue("chunk_mode")
-		result, err := r.svc.Import(req.Context(), string(data), header.Filename, chunkMode)
+		result, err := r.svc.Import(req.Context(), fileContent, header.Filename, chunkMode)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, err.Error())
 			return
@@ -394,7 +429,7 @@ func (r *Router) handleReview(w http.ResponseWriter, req *http.Request) {
 				writeError(w, http.StatusBadRequest, "id required")
 				return
 			}
-			if err := r.svc.SetReviewStatus(req.Context(), body.ID, "pending", body.Reason); err != nil {
+			if err := r.svc.SetReviewStatus(req.Context(), body.ID, domain.ReviewPending, body.Reason); err != nil {
 				writeError(w, http.StatusInternalServerError, err.Error())
 				return
 			}
@@ -494,6 +529,145 @@ func (r *Router) handleBadRecall(w http.ResponseWriter, req *http.Request) {
 func writeJSON(w http.ResponseWriter, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(v)
+}
+
+func (r *Router) handleExport(w http.ResponseWriter, req *http.Request) {
+	if req.Method != http.MethodGet {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+
+	data, err := r.svc.Export(req.Context())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Content-Disposition", "attachment; filename=personal-know-export.json")
+	json.NewEncoder(w).Encode(data)
+}
+
+func (r *Router) handleBulkImport(w http.ResponseWriter, req *http.Request) {
+	if req.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+
+	req.Body = http.MaxBytesReader(w, req.Body, maxBulkImportSize)
+
+	contentType := req.Header.Get("Content-Type")
+
+	var exportData service.ExportData
+
+	if strings.HasPrefix(contentType, "multipart/form-data") {
+		if err := req.ParseMultipartForm(maxBulkImportSize); err != nil {
+			writeError(w, http.StatusBadRequest, "parse form: "+err.Error())
+			return
+		}
+		file, _, err := req.FormFile("file")
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "file required")
+			return
+		}
+		defer file.Close()
+		if err := json.NewDecoder(file).Decode(&exportData); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid export JSON: "+err.Error())
+			return
+		}
+	} else {
+		if err := json.NewDecoder(req.Body).Decode(&exportData); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid JSON: "+err.Error())
+			return
+		}
+	}
+
+	if len(exportData.Items) == 0 {
+		writeError(w, http.StatusBadRequest, "no items to import")
+		return
+	}
+
+	result, err := r.svc.BulkImport(req.Context(), &exportData)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, result)
+}
+
+func extractDocxText(data []byte) (string, error) {
+	tmpFile, err := os.CreateTemp("", "know-upload-*.docx")
+	if err != nil {
+		return "", err
+	}
+	defer os.Remove(tmpFile.Name())
+
+	if _, err := tmpFile.Write(data); err != nil {
+		tmpFile.Close()
+		return "", err
+	}
+	tmpFile.Close()
+
+	r, err := docx.ReadDocxFile(tmpFile.Name())
+	if err != nil {
+		return "", err
+	}
+	defer r.Close()
+
+	doc := r.Editable()
+	text := doc.GetContent()
+	text = strings.ReplaceAll(text, "</w:t></w:r></w:p>", "\n")
+	text = strings.ReplaceAll(text, "</w:t>", " ")
+
+	cleaned := xmlTagRe.ReplaceAllString(text, "")
+
+	result := strings.TrimSpace(cleaned)
+	if result == "" {
+		return "", fmt.Errorf("no text content found in DOCX")
+	}
+	return result, nil
+}
+
+func extractPDFText(data []byte) (string, error) {
+	tmpFile, err := os.CreateTemp("", "know-upload-*.pdf")
+	if err != nil {
+		return "", err
+	}
+	defer os.Remove(tmpFile.Name())
+
+	if _, err := tmpFile.Write(data); err != nil {
+		tmpFile.Close()
+		return "", err
+	}
+	tmpFile.Close()
+
+	f, reader, err := pdflib.Open(tmpFile.Name())
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+
+	var buf bytes.Buffer
+	for i := 1; i <= reader.NumPage(); i++ {
+		page := reader.Page(i)
+		if page.V.IsNull() {
+			continue
+		}
+		text, err := page.GetPlainText(nil)
+		if err != nil {
+			continue
+		}
+		if buf.Len() > 0 {
+			buf.WriteString("\n\n")
+		}
+		buf.WriteString(text)
+	}
+
+	result := strings.TrimSpace(buf.String())
+	if result == "" {
+		return "", fmt.Errorf("no text content found in PDF")
+	}
+	return result, nil
 }
 
 func writeError(w http.ResponseWriter, code int, msg string) {
